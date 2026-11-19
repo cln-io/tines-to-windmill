@@ -1,0 +1,2505 @@
+{
+ "schema_version": 30,
+ "standard_lib_version": 94,
+ "action_runtime_version": 87,
+ "name": "Cold chain - review excursions",
+ "description": null,
+ "guid": "9d369743b93e1d6bfb7a07131ee03b6f",
+ "slug": "cold_chain_review_excursions",
+ "agents": [
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "depots",
+   "disabled": false,
+   "description": null,
+   "guid": "b23e6bb9d09a953542a91bea06584c7b",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": [
+     "north-quay",
+     "ridgeway",
+     "old-mill"
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": [
+    {
+     "cron": "*/20 * * * *",
+     "timezone": "America/Toronto"
+    }
+   ]
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "explode depots",
+   "disabled": false,
+   "description": null,
+   "guid": "bebbba7cfd09dad91a0fbbafff5441f0",
+   "options": {
+    "mode": "explode",
+    "path": "=depots",
+    "to": "code",
+    "limit": "500"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "get excursions",
+   "disabled": false,
+   "description": null,
+   "guid": "fd6476b4bfad66bd7534712d311d0286",
+   "options": {
+    "url": "https://tracker.example.com/v2/depots/<<explode_depots.code>>/excursions?state=open&limit=200<<since_parameter>>",
+    "content_type": "application_json",
+    "method": "get",
+    "headers": {
+     "X-Auth-Token": "<<CREDENTIAL.tracker_api_token>>"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "200",
+   "disabled": false,
+   "description": null,
+   "guid": "145fa7a0a3bd175c05316ee4dd824e17",
+   "options": {
+    "rules": [
+     {
+      "type": "field==value",
+      "value": "200",
+      "path": "<<get_excursions.status>>"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "not defrost",
+   "disabled": false,
+   "description": null,
+   "guid": "6f58935439cfbbc8cf39323a1b3b7494",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=REJECT(get_excursions.body.items,\n  LAMBDA(item,\n    FILTER(MAP(item.causes, \"code\"), LAMBDA(code, INDEX_OF(code, \"defrost\")))\n    |> SIZE(%) > 0))"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "door open",
+   "disabled": true,
+   "description": null,
+   "guid": "6240d38810c0b31dbedc4d4ace0ce0a6",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=FILTER(get_excursions.body.items, LAMBDA(item, MAP(item.causes, \"code\") |> INDEX_OF(%, \"door-open\")))"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "not empty",
+   "disabled": true,
+   "description": null,
+   "guid": "8bb0ca04880befdf1063e18cb56d26a0",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "0",
+      "path": "=SIZE(door_open)"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "rows",
+   "disabled": true,
+   "description": null,
+   "guid": "d4cfcceffd163d1e7b4bc833db8f4917",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=door_open"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "not empty",
+   "disabled": false,
+   "description": null,
+   "guid": "c00c6bb021685253362785b2a5f5d461",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "0",
+      "path": "=SIZE(not_defrost)"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "rows",
+   "disabled": false,
+   "description": null,
+   "guid": "af3d09ab0a8dec9bf6b8e7588088710f",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=not_defrost"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "explode excursions",
+   "disabled": false,
+   "description": null,
+   "guid": "a6e5e4e56fc7a97cf1441affa999a871",
+   "options": {
+    "mode": "explode",
+    "path": "=rows",
+    "to": "alert",
+    "limit": "500"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "Look up carrier",
+   "disabled": false,
+   "description": null,
+   "guid": "d7a3d8ef9e376c3e30187e4268ed77cb",
+   "options": {
+    "url": "https://carriers.example.net/v1/vehicles/<<explode_excursions.alert.vehicle_id>>",
+    "content_type": "json",
+    "method": "get",
+    "payload": {
+     "key": "<<CREDENTIAL.carrier_directory_key>>"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "Get batch report from lab",
+   "disabled": false,
+   "description": null,
+   "guid": "b42a60976464b7e9c7a4024e95e41399",
+   "options": {
+    "url": "https://lab.example.com/api/v3/batches/<<explode_excursions.alert.batch_no>>",
+    "method": "get",
+    "headers": {
+     "x-lab-key": "<<CREDENTIAL.lab_api_key>>"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "404",
+   "disabled": false,
+   "description": null,
+   "guid": "2bfad4d04be6671f4e70a6cdff2e6236",
+   "options": {
+    "rules": [
+     {
+      "type": "formula",
+      "value": null,
+      "path": "=IS_BLANK(_404.rule_matched)"
+     },
+     {
+      "type": "field==value",
+      "value": "404",
+      "path": "<<get_batch_report_from_lab.status>>"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "wait for lab",
+   "disabled": false,
+   "description": null,
+   "guid": "f5c1e0032ae34a258d4a4c10f515e668",
+   "options": {
+    "mode": "delay",
+    "seconds": "45"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "failed tests above 0",
+   "disabled": false,
+   "description": null,
+   "guid": "37d5b336dba71e6d5a7ae045567695e7",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "0",
+      "path": "=get_batch_report_from_lab.body.result.counts.failed"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "borderline tests above 2",
+   "disabled": false,
+   "description": null,
+   "guid": "6d53b44cda4a3a5850a8d1b3dca5f793",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "2",
+      "path": "=get_batch_report_from_lab.body.result.counts.borderline"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "Check claims register",
+   "disabled": false,
+   "description": null,
+   "guid": "c402899a8c27f015ddd658fb3c3128cd",
+   "options": {
+    "url": "https://claims.example.org/api/shipments/<<explode_excursions.alert.shipment_id>>",
+    "method": "get",
+    "headers": {
+     "apikey": "<<CREDENTIAL.claims_register_key>>"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "200",
+   "disabled": false,
+   "description": null,
+   "guid": "b4582e42459a430e84bbc6416b9a44a7",
+   "options": {
+    "rules": [
+     {
+      "type": "field==value",
+      "value": "200",
+      "path": "<<check_claims_register.status>>"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "open claims is greater than 0",
+   "disabled": false,
+   "description": null,
+   "guid": "a1fe6302ff9d56c177924325c345ab16",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "0",
+      "path": "=check_claims_register.body.summary.open_claims"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "claim summary",
+   "disabled": false,
+   "description": null,
+   "guid": "2a79a0a8abb62a8d0e5d3dd889477088",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=WHERE(check_claims_register.body.claims, \"state\", \"open\") |> MAP(%, \"insurer\") |> JOIN(%, \", \")"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "Event Transform Action",
+   "disabled": false,
+   "description": null,
+   "guid": "1ca6a240018c57a8865ca00675e7124c",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": {
+     "message": "This is an automatically generated message from Tines"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::GroupAgent",
+   "name": "Sensor audit",
+   "disabled": false,
+   "description": null,
+   "guid": "f060fef61bf7f5c96a1126fb8da65fec",
+   "options": {
+    "payload": {
+     "explode_excursions": "=explode_excursions"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null,
+   "group": {
+    "schema_version": 30,
+    "standard_lib_version": 94,
+    "action_runtime_version": 87,
+    "name": "",
+    "description": null,
+    "guid": "6102bcc848f8292f79d2629eb01fc730",
+    "slug": null,
+    "agents": [
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Search audits for sensor",
+      "disabled": false,
+      "description": null,
+      "guid": "fedada1458e3f09e54ccf223cef93c2b",
+      "options": {
+       "url": "https://audit.example.org/v3/audits/search",
+       "method": "get",
+       "payload": {
+        "scope": "fleet",
+        "sensor": "<<input.payload.explode_excursions.alert.sensor_id>>"
+       },
+       "headers": {
+        "Authorization": "<<CREDENTIAL.sensor_audit_key>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "no audit yet",
+      "disabled": false,
+      "description": null,
+      "guid": "65e5ce7ccfcfc71dacaf57162e5b8f98",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "204",
+         "path": "<<search_audits_for_sensor.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Request an audit",
+      "disabled": false,
+      "description": null,
+      "guid": "11e256a2dd3b72b611be1cb1ed5bb565",
+      "options": {
+       "url": "https://audit.example.org/v3/audits",
+       "method": "post",
+       "content_type": "application_json",
+       "payload": {
+        "sensor": "<<input.payload.explode_excursions.alert.sensor_id>>",
+        "kind": "calibration",
+        "scope": "fleet"
+       },
+       "headers": {
+        "Authorization": "<<CREDENTIAL.sensor_audit_key>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "200",
+      "disabled": false,
+      "description": null,
+      "guid": "1b5af61a22994ab9e7fb3952c667a185",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "200",
+         "path": "<<request_an_audit.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Start the audit",
+      "disabled": false,
+      "description": null,
+      "guid": "d86fb35558f90f698dd6d413beffcfef",
+      "options": {
+       "url": "https://audit.example.org/v3/audits/<<request_an_audit.body.result.audit_id>>/start",
+       "method": "put",
+       "content_type": "application_json",
+       "headers": {
+        "Authorization": "<<CREDENTIAL.sensor_audit_key>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "200",
+      "disabled": false,
+      "description": null,
+      "guid": "d5209cb024fab1d179448eb1545c7967",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "200",
+         "path": "<<start_the_audit.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::EventTransformationAgent",
+      "name": "wait 20 seconds",
+      "disabled": false,
+      "description": null,
+      "guid": "f27109bc06209751d604e04cd5dc2849",
+      "options": {
+       "mode": "delay",
+       "seconds": "20"
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Get audit result",
+      "disabled": false,
+      "description": null,
+      "guid": "6fbc77d3b529f7025822fdf553d296a0",
+      "options": {
+       "url": "https://audit.example.org/v3/audits/<<request_an_audit.body.result.audit_id>>",
+       "method": "get",
+       "content_type": "application_json",
+       "headers": {
+        "Authorization": "<<CREDENTIAL.sensor_audit_key>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "200",
+      "disabled": false,
+      "description": null,
+      "guid": "27049649e5c52ba352919656d13499d2",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "200",
+         "path": "<<get_audit_result.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "audit exists",
+      "disabled": false,
+      "description": null,
+      "guid": "dd64d93de7aa5c278241d40c36c634a7",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "200",
+         "path": "<<search_audits_for_sensor.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::EventTransformationAgent",
+      "name": "findings",
+      "disabled": false,
+      "description": null,
+      "guid": "3411e89214250eb391f190e9712b8427",
+      "options": {
+       "mode": "message_only",
+       "loop": false,
+       "payload": "=DEFAULT(get_audit_result.body.result.findings,FIRST(search_audits_for_sensor.body.result).findings)"
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "faults>0",
+      "disabled": false,
+      "description": null,
+      "guid": "2ba2c83b24ef2bf732128484d44be40b",
+      "options": {
+       "rules": [
+        {
+         "type": "field>value",
+         "value": "0",
+         "path": "=findings.faults"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::GroupInputAgent",
+      "name": "Input",
+      "disabled": false,
+      "description": null,
+      "guid": "33adcb34dc397e607672764677ceb74f",
+      "options": {
+       "options": [
+        {
+         "name": "Payload",
+         "type": "OBJECT",
+         "description": "The payload to send to the group",
+         "required": false
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::GroupOutputAgent",
+      "name": "Output",
+      "disabled": false,
+      "description": null,
+      "guid": "38874de10242425b653dab6e3fc9aa82",
+      "options": {
+       "payload": "=findings"
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     }
+    ],
+    "diagram_notes": [],
+    "links": [
+     {
+      "source": 0,
+      "receiver": 1
+     },
+     {
+      "source": 0,
+      "receiver": 9
+     },
+     {
+      "source": 1,
+      "receiver": 2
+     },
+     {
+      "source": 2,
+      "receiver": 3
+     },
+     {
+      "source": 3,
+      "receiver": 4
+     },
+     {
+      "source": 4,
+      "receiver": 5
+     },
+     {
+      "source": 5,
+      "receiver": 6
+     },
+     {
+      "source": 6,
+      "receiver": 7
+     },
+     {
+      "source": 7,
+      "receiver": 8
+     },
+     {
+      "source": 8,
+      "receiver": 10
+     },
+     {
+      "source": 9,
+      "receiver": 10
+     },
+     {
+      "source": 10,
+      "receiver": 11
+     },
+     {
+      "source": 11,
+      "receiver": 13
+     },
+     {
+      "source": 12,
+      "receiver": 0
+     }
+    ],
+    "diagram_layout": "{}",
+    "story_library_metadata": {},
+    "monitor_failures": false,
+    "synchronous_webhooks_enabled": false,
+    "integrations": [],
+    "sections": []
+   }
+  },
+  {
+   "type": "Agents::GroupAgent",
+   "name": "Find or Render Chart",
+   "disabled": false,
+   "description": "Searches the chart service for a chart of the sensor. If none exists, a render job is submitted and polled until it is ready.",
+   "guid": "ec0f2496aa1c98629339f7325ab3e539",
+   "options": {},
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": "e34c1d68794a65c4a65bfd2ba91f6708e34c1d68794a65c4a65bfd2ba91f6708",
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null,
+   "group": {
+    "schema_version": 30,
+    "standard_lib_version": 94,
+    "action_runtime_version": 87,
+    "name": "",
+    "description": null,
+    "guid": "842a6a93e253082e16b5be59519cae49",
+    "slug": null,
+    "agents": [
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Search charts for sensor",
+      "disabled": false,
+      "description": null,
+      "guid": "9e441ff7582c42f7431d99b9ec5e9c43",
+      "options": {
+       "url": "https://charts.example.com/api/v1/search/",
+       "content_type": "application_json",
+       "method": "get",
+       "payload": {
+        "q": "sensor:\"<<GROUP_INPUT.sensor_id>>\""
+       },
+       "headers": {
+        "API-Key": "<<GROUP_INPUT.chart_service_credential>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Get chart job",
+      "disabled": false,
+      "description": null,
+      "guid": "ce896047873add23ffaf79ca005543c3",
+      "options": {
+       "url": "<<search_charts_for_sensor.body.results[0].job_url>>",
+       "content_type": "application_json",
+       "method": "get",
+       "headers": {
+        "API-Key": "<<GROUP_INPUT.chart_service_credential>>"
+       }
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "Chart found",
+      "disabled": false,
+      "description": null,
+      "guid": "fe5ee4859234fc09a84a4f6988132285",
+      "options": {
+       "rules": [
+        {
+         "type": "field>value",
+         "value": "0",
+         "path": "=SIZE(search_charts_for_sensor.body.results)"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "No chart",
+      "disabled": false,
+      "description": null,
+      "guid": "3f245fcb41929bfa591132e3f0c1de6c",
+      "options": {
+       "rules": [
+        {
+         "type": "field<value",
+         "value": "1",
+         "path": "=SIZE(search_charts_for_sensor.body.results)"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Submit render job",
+      "disabled": false,
+      "description": null,
+      "guid": "298b797b685d63abc6f94ca568cc63be",
+      "options": {
+       "url": "https://charts.example.com/api/v1/render/",
+       "content_type": "application_json",
+       "method": "post",
+       "payload": {
+        "sensor": "<<GROUP_INPUT.sensor_id>>",
+        "resolution": "<<DEFAULT(FORCE_ARRAY(GROUP_INPUT.resolution)[0], \"minute\")>>"
+       },
+       "headers": {
+        "API-Key": "<<GROUP_INPUT.chart_service_credential>>"
+       },
+       "retry_on_status": [
+        "429"
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::EventTransformationAgent",
+      "name": "Wait for render",
+      "disabled": false,
+      "description": null,
+      "guid": "1a8bfdae5a9610ac6dd1134bc379a334",
+      "options": {
+       "mode": "delay",
+       "seconds": "10"
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::HTTPRequestAgent",
+      "name": "Get chart job",
+      "disabled": false,
+      "description": null,
+      "guid": "3dfeb3e83fae3db9467e720fb59f0a00",
+      "options": {
+       "url": "<<submit_render_job.body.job_url>>",
+       "content_type": "application_json",
+       "method": "get",
+       "headers": {
+        "API-Key": "<<GROUP_INPUT.chart_service_credential>>"
+       },
+       "log_error_on_status": [
+        "0",
+        "500-599"
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null,
+      "schedule": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "Still rendering",
+      "disabled": false,
+      "description": null,
+      "guid": "5e857c0c53e46c4af2503bcd1c973980",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "404",
+         "path": "<<get_chart_job.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::GroupInputAgent",
+      "name": "Input",
+      "disabled": false,
+      "description": null,
+      "guid": "6397a94f981125c6e475c61e2b79b83d",
+      "options": {
+       "options": []
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::GroupOutputAgent",
+      "name": "Output",
+      "disabled": false,
+      "description": null,
+      "guid": "cfd7968d771c37bef3f7889b99f21cfc",
+      "options": {
+       "payload": "=DEFAULT(get_chart_job, submit_render_job)"
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     },
+     {
+      "type": "Agents::TriggerAgent",
+      "name": "Accepted",
+      "disabled": false,
+      "description": null,
+      "guid": "cf360e303003215a28a2cc042c219d78",
+      "options": {
+       "rules": [
+        {
+         "type": "field==value",
+         "value": "200",
+         "path": "<<submit_render_job.status>>"
+        }
+       ]
+      },
+      "reporting": {
+       "time_saved_value": 0,
+       "time_saved_unit": "minutes"
+      },
+      "monitoring": {
+       "monitor_all_events": false,
+       "monitor_failures": false,
+       "monitor_no_events_emitted": null
+      },
+      "template": {
+       "created_from_template_guid": null,
+       "created_from_template_version": null,
+       "template_tags": []
+      },
+      "width": null
+     }
+    ],
+    "diagram_notes": [],
+    "links": [
+     {
+      "source": 0,
+      "receiver": 2
+     },
+     {
+      "source": 1,
+      "receiver": 9
+     },
+     {
+      "source": 2,
+      "receiver": 1
+     },
+     {
+      "source": 2,
+      "receiver": 3,
+      "link_type": "secondary"
+     },
+     {
+      "source": 3,
+      "receiver": 4
+     },
+     {
+      "source": 4,
+      "receiver": 10
+     },
+     {
+      "source": 5,
+      "receiver": 6
+     },
+     {
+      "source": 6,
+      "receiver": 7
+     },
+     {
+      "source": 7,
+      "receiver": 5
+     },
+     {
+      "source": 7,
+      "receiver": 9,
+      "link_type": "secondary"
+     },
+     {
+      "source": 8,
+      "receiver": 0
+     },
+     {
+      "source": 10,
+      "receiver": 5
+     },
+     {
+      "source": 10,
+      "receiver": 9,
+      "link_type": "secondary"
+     }
+    ],
+    "diagram_layout": "{}",
+    "story_library_metadata": {},
+    "monitor_failures": false,
+    "synchronous_webhooks_enabled": false,
+    "integrations": [],
+    "sections": []
+   }
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "200",
+   "disabled": false,
+   "description": null,
+   "guid": "9aa9f25b8cba4c12288808e464303b2c",
+   "options": {
+    "rules": [
+     {
+      "type": "field==value",
+      "value": "200",
+      "path": "<<find_or_render_chart.status>>"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "Retrieve chart image",
+   "disabled": false,
+   "description": null,
+   "guid": "e96c46826ca5e06ca58fd74790c9847d",
+   "options": {
+    "url": "https://charts.example.com/images/<<INPUT.job_id>>.png",
+    "method": "get"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": "6b877ec152b040e06417179ba2dd4e266b877ec152b040e06417179ba2dd4e26",
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "200",
+   "disabled": false,
+   "description": null,
+   "guid": "86eeac38e3c16d13fb01c985cda753f4",
+   "options": {
+    "rules": [
+     {
+      "type": "field==value",
+      "value": "200",
+      "path": "<<retrieve_chart_image.status>>"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "tag for join",
+   "disabled": false,
+   "description": null,
+   "guid": "81b3dd911c095cca3889231f78d50a4c",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": {
+     "data": "<h2>Temperature excursion on shipment <<explode_excursions.alert.shipment_id>></h2>\n<p>Batch <<explode_excursions.alert.batch_no>>, peak <<explode_excursions.alert.peak_c>> C, causes: <<MAP(explode_excursions.alert.causes, \"code\") |> JOIN(%, \", \")>></p>\n<p>Carrier: <<look_up_carrier.body.name>> (<<look_up_carrier.body.dispatch_phone>>)</p>\n<p>Lab tests: <<get_batch_report_from_lab.body.result.counts.failed>> failed, <<get_batch_report_from_lab.body.result.counts.borderline>> borderline</p>\n<p>Open claims: <<check_claims_register.body.summary.open_claims>></p>",
+     "part": "message"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "tag for join",
+   "disabled": false,
+   "description": null,
+   "guid": "8461957ebe1bb92a9372cf651b8c64cf",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": {
+     "data": "=retrieve_chart_image.body",
+     "part": "chart"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "join parts",
+   "disabled": false,
+   "description": null,
+   "guid": "ccaef3e3bb1e169b4a44d40f60b6b95d",
+   "options": {
+    "mode": "implode",
+    "item_path": "=tag_for_join",
+    "guid_path": "=explode_excursions.alert.id",
+    "size_path": "=2",
+    "seconds": 40
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "message",
+   "disabled": false,
+   "description": null,
+   "guid": "69b10e9af9b70c3420b4d5fa3f929a4b",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=WHERE(join_parts,\"part\",\"message\") |> FIRST(%).data"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "chart",
+   "disabled": false,
+   "description": null,
+   "guid": "de93f7d6cc51097228b90b3ca0a20990",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=WHERE(join_parts,\"part\",\"chart\") |> FIRST(%).data"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "message present",
+   "disabled": false,
+   "description": null,
+   "guid": "b39ec6f3c2b2fa2e3988bbe309d986af",
+   "options": {
+    "rules": [
+     {
+      "path": "=SIZE(message)",
+      "type": "field>value",
+      "value": "0"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EmailAgent",
+   "name": "Send excursion report",
+   "disabled": false,
+   "description": null,
+   "guid": "c8ffe9f1556eb50f0151ce871f71cb9c",
+   "options": {
+    "recipients": "coldchain-duty@example.com",
+    "reply_to": "coldchain-duty@example.com",
+    "subject": "Cold chain: excursion needs review",
+    "body": "<<message>>",
+    "attachments": [
+     {
+      "filename": "<<chart.filename>>",
+      "base64encodedcontents": "<<chart.base64encodedcontents>>",
+      "content_type": "auto"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "since parameter",
+   "disabled": false,
+   "description": null,
+   "guid": "955c61b4df584bc744fbfdd9bc5b06e3",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=IF(IS_BLANK(LOCAL.last),\"\",\"&since=\"&LOCAL.last)",
+    "local": {
+     "last": "=GET(RESOURCE.excursion_cursor, explode_depots.code)"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "slow down",
+   "disabled": false,
+   "description": null,
+   "guid": "87781d50d273f67b5254ec913b7f54fa",
+   "options": {
+    "mode": "throttle",
+    "capacity": "4",
+    "interval": "minute"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "latest seen",
+   "disabled": false,
+   "description": null,
+   "guid": "54b3dc46eeaf7454bb199e435695201e",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": {
+     "next": "=MAX(LOCAL.cursor_s, LOCAL.alert_s) + 1"
+    },
+    "local": {
+     "cursor_s": "=GET(RESOURCE.excursion_cursor, explode_depots.code) |> DEFAULT(%, 0) |> NUMBER(%)",
+     "alert_s": "=DATE(explode_excursions.alert.raised_at, \"%s\") |> NUMBER(%)"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::HTTPRequestAgent",
+   "name": "save cursor",
+   "disabled": false,
+   "description": null,
+   "guid": "416b67520b2ec72b48e1b56cd0b7e2fe",
+   "options": {
+    "url": "https://tenant.example.com/api/v1/global_resources/4410/replace",
+    "method": "post",
+    "content_type": "application_json",
+    "payload": {
+     "key": "=explode_depots.code",
+     "value": "<<latest_seen.next>>"
+    },
+    "headers": {
+     "x-user-token": "<<CREDENTIAL.tenant_api_token>>"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "power loss",
+   "disabled": true,
+   "description": null,
+   "guid": "2594c425c626ab9ae1d86e3a72be36dd",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=FILTER(get_excursions.body.items, LAMBDA(item, MAP(item.causes, \"code\") |> INDEX_OF(%, \"power-loss\")))"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::TriggerAgent",
+   "name": "not empty",
+   "disabled": true,
+   "description": null,
+   "guid": "104b5b1faf01cd0c9f6f5410fa5301d5",
+   "options": {
+    "rules": [
+     {
+      "type": "field>value",
+      "value": "0",
+      "path": "=SIZE(power_loss)"
+     }
+    ]
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "rows",
+   "disabled": true,
+   "description": null,
+   "guid": "68dec64109343986919bdb740413d2f5",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": "=power_loss"
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  },
+  {
+   "type": "Agents::EventTransformationAgent",
+   "name": "Event Transform Action",
+   "disabled": false,
+   "description": null,
+   "guid": "239934ee8db80cd501e4b355381323b9",
+   "options": {
+    "mode": "message_only",
+    "loop": false,
+    "payload": {
+     "message": "This is an automatically generated message from Tines"
+    }
+   },
+   "reporting": {
+    "time_saved_value": 0,
+    "time_saved_unit": "minutes"
+   },
+   "monitoring": {
+    "monitor_all_events": false,
+    "monitor_failures": false,
+    "monitor_no_events_emitted": null
+   },
+   "template": {
+    "created_from_template_guid": null,
+    "created_from_template_version": null,
+    "template_tags": []
+   },
+   "width": null,
+   "schedule": null
+  }
+ ],
+ "diagram_notes": [
+  {
+   "content": "cursor lives in resource excursion_cursor: https://tenant.example.com/team/1/resources/4410",
+   "position": [
+    1830,
+    540
+   ],
+   "guid": "7537a4cf77a52a9562260f2432874f79",
+   "width": 270
+  },
+  {
+   "content": "Defrost cycles are planned, so excursions caused by them are ignored on purpose",
+   "position": [
+    1230,
+    -60
+   ],
+   "guid": "5ee7823a98f6ae039636e12eed92d94e",
+   "width": 270
+  },
+  {
+   "content": "remember the latest alert time per depot so the next run continues from there",
+   "position": [
+    330,
+    690
+   ],
+   "guid": "73fb8d2aacae86fd8ac756da9ea97a98",
+   "width": 270
+  }
+ ],
+ "links": [
+  {
+   "source": 0,
+   "receiver": 1
+  },
+  {
+   "source": 1,
+   "receiver": 34
+  },
+  {
+   "source": 2,
+   "receiver": 3
+  },
+  {
+   "source": 3,
+   "receiver": 4
+  },
+  {
+   "source": 4,
+   "receiver": 8
+  },
+  {
+   "source": 5,
+   "receiver": 6
+  },
+  {
+   "source": 6,
+   "receiver": 7
+  },
+  {
+   "source": 8,
+   "receiver": 9
+  },
+  {
+   "source": 9,
+   "receiver": 10
+  },
+  {
+   "source": 10,
+   "receiver": 11
+  },
+  {
+   "source": 10,
+   "receiver": 35
+  },
+  {
+   "source": 11,
+   "receiver": 12
+  },
+  {
+   "source": 11,
+   "receiver": 17
+  },
+  {
+   "source": 11,
+   "receiver": 22
+  },
+  {
+   "source": 11,
+   "receiver": 23
+  },
+  {
+   "source": 12,
+   "receiver": 13
+  },
+  {
+   "source": 12,
+   "receiver": 15
+  },
+  {
+   "source": 12,
+   "receiver": 16
+  },
+  {
+   "source": 13,
+   "receiver": 14
+  },
+  {
+   "source": 14,
+   "receiver": 12
+  },
+  {
+   "source": 15,
+   "receiver": 27
+  },
+  {
+   "source": 16,
+   "receiver": 27
+  },
+  {
+   "source": 17,
+   "receiver": 18
+  },
+  {
+   "source": 18,
+   "receiver": 19
+  },
+  {
+   "source": 18,
+   "receiver": 21,
+   "link_type": "secondary"
+  },
+  {
+   "source": 19,
+   "receiver": 20
+  },
+  {
+   "source": 23,
+   "receiver": 24
+  },
+  {
+   "source": 24,
+   "receiver": 25
+  },
+  {
+   "source": 25,
+   "receiver": 26
+  },
+  {
+   "source": 26,
+   "receiver": 28
+  },
+  {
+   "source": 27,
+   "receiver": 29
+  },
+  {
+   "source": 28,
+   "receiver": 29
+  },
+  {
+   "source": 29,
+   "receiver": 30
+  },
+  {
+   "source": 30,
+   "receiver": 31
+  },
+  {
+   "source": 31,
+   "receiver": 32
+  },
+  {
+   "source": 32,
+   "receiver": 33
+  },
+  {
+   "source": 34,
+   "receiver": 2
+  },
+  {
+   "source": 35,
+   "receiver": 36
+  },
+  {
+   "source": 36,
+   "receiver": 37
+  },
+  {
+   "source": 38,
+   "receiver": 39
+  },
+  {
+   "source": 39,
+   "receiver": 40
+  }
+ ],
+ "diagram_layout": "{\"b23e6bb9d09a953542a91bea06584c7b\": [0, 0], \"bebbba7cfd09dad91a0fbbafff5441f0\": [300, 0], \"fd6476b4bfad66bd7534712d311d0286\": [600, 0], \"145fa7a0a3bd175c05316ee4dd824e17\": [900, 0], \"6f58935439cfbbc8cf39323a1b3b7494\": [1200, 0], \"6240d38810c0b31dbedc4d4ace0ce0a6\": [1500, 0], \"8bb0ca04880befdf1063e18cb56d26a0\": [1800, 0], \"d4cfcceffd163d1e7b4bc833db8f4917\": [0, 150], \"c00c6bb021685253362785b2a5f5d461\": [300, 150], \"af3d09ab0a8dec9bf6b8e7588088710f\": [600, 150], \"a6e5e4e56fc7a97cf1441affa999a871\": [900, 150], \"d7a3d8ef9e376c3e30187e4268ed77cb\": [1200, 150], \"b42a60976464b7e9c7a4024e95e41399\": [1500, 150], \"2bfad4d04be6671f4e70a6cdff2e6236\": [1800, 150], \"f5c1e0032ae34a258d4a4c10f515e668\": [0, 300], \"37d5b336dba71e6d5a7ae045567695e7\": [300, 300], \"6d53b44cda4a3a5850a8d1b3dca5f793\": [600, 300], \"c402899a8c27f015ddd658fb3c3128cd\": [900, 300], \"b4582e42459a430e84bbc6416b9a44a7\": [1200, 300], \"a1fe6302ff9d56c177924325c345ab16\": [1500, 300], \"2a79a0a8abb62a8d0e5d3dd889477088\": [1800, 300], \"1ca6a240018c57a8865ca00675e7124c\": [0, 450], \"f060fef61bf7f5c96a1126fb8da65fec\": [300, 450], \"ec0f2496aa1c98629339f7325ab3e539\": [600, 450], \"9aa9f25b8cba4c12288808e464303b2c\": [900, 450], \"e96c46826ca5e06ca58fd74790c9847d\": [1200, 450], \"86eeac38e3c16d13fb01c985cda753f4\": [1500, 450], \"81b3dd911c095cca3889231f78d50a4c\": [1800, 450], \"8461957ebe1bb92a9372cf651b8c64cf\": [0, 600], \"ccaef3e3bb1e169b4a44d40f60b6b95d\": [300, 600], \"69b10e9af9b70c3420b4d5fa3f929a4b\": [600, 600], \"de93f7d6cc51097228b90b3ca0a20990\": [900, 600], \"b39ec6f3c2b2fa2e3988bbe309d986af\": [1200, 600], \"c8ffe9f1556eb50f0151ce871f71cb9c\": [1500, 600], \"955c61b4df584bc744fbfdd9bc5b06e3\": [1800, 600], \"87781d50d273f67b5254ec913b7f54fa\": [0, 750], \"54b3dc46eeaf7454bb199e435695201e\": [300, 750], \"416b67520b2ec72b48e1b56cd0b7e2fe\": [600, 750], \"2594c425c626ab9ae1d86e3a72be36dd\": [900, 750], \"104b5b1faf01cd0c9f6f5410fa5301d5\": [1200, 750], \"68dec64109343986919bdb740413d2f5\": [1500, 750], \"239934ee8db80cd501e4b355381323b9\": [1800, 750]}",
+ "story_library_metadata": {},
+ "monitor_failures": false,
+ "synchronous_webhooks_enabled": false,
+ "integrations": [
+  {
+   "action_inputs": [
+    {
+     "name": "Job ID",
+     "description": "",
+     "required": true,
+     "type": "TEXT",
+     "ranking": 1073741824,
+     "value": "\"<<find_or_render_chart.body.job.id>>\"",
+     "options": [
+      "Option 1",
+      "Option 2"
+     ],
+     "is_collapsed": false,
+     "sub_type": "HTML",
+     "multi_select_enabled": false,
+     "llm_json_schema": "{}"
+    }
+   ],
+   "action_guid": "e96c46826ca5e06ca58fd74790c9847d",
+   "product": "Chart service",
+   "action_options_keys": []
+  },
+  {
+   "action_inputs": [
+    {
+     "name": "Sensor ID",
+     "description": "",
+     "required": true,
+     "type": "TEXT",
+     "ranking": 1073741824,
+     "value": "\"<<explode_excursions.alert.sensor_id>>\"",
+     "options": [
+      "Option 1",
+      "Option 2"
+     ],
+     "is_collapsed": false,
+     "sub_type": "HTML",
+     "multi_select_enabled": false,
+     "llm_json_schema": "{}"
+    },
+    {
+     "name": "Resolution",
+     "description": "Resolution of a newly rendered chart. Defaults to minute.",
+     "required": false,
+     "type": "OPTION",
+     "ranking": 1073741824,
+     "value": "\"\"",
+     "options": [
+      "hour",
+      "minute",
+      "raw"
+     ],
+     "is_collapsed": false,
+     "sub_type": "HTML",
+     "multi_select_enabled": false,
+     "llm_json_schema": "{}"
+    },
+    {
+     "name": "Chart service credential",
+     "description": "",
+     "required": true,
+     "type": "CREDENTIAL",
+     "ranking": 1073741824,
+     "value": "\"=CREDENTIAL.chart_service\"",
+     "options": [
+      "Option 1",
+      "Option 2"
+     ],
+     "is_collapsed": false,
+     "sub_type": "HTML",
+     "multi_select_enabled": false,
+     "llm_json_schema": "{}"
+    }
+   ],
+   "action_guid": "ec0f2496aa1c98629339f7325ab3e539",
+   "product": "Chart service",
+   "action_options_keys": []
+  }
+ ],
+ "sections": [],
+ "parent_only_send_to_story": false,
+ "send_to_story_timeout_enabled": false,
+ "send_to_story_timeout_duration_seconds": null,
+ "keep_events_for": 604800,
+ "reporting_status": true,
+ "send_to_story_enabled": false,
+ "entry_agent_guid": null,
+ "exit_agent_guids": [],
+ "api_entry_action_guids": [],
+ "api_exit_action_guids": [],
+ "send_to_story_access": null,
+ "send_to_story_access_source": 0,
+ "send_to_story_skill_use_requires_confirmation": true,
+ "pages": [],
+ "tags": [],
+ "time_saved_unit": "minutes",
+ "time_saved_value": 0,
+ "recipients": [
+  "coldchain-duty@example.com"
+ ],
+ "integration_product": null,
+ "integration_vendor": null,
+ "llm_product_instructions": "",
+ "start_reference": null,
+ "app_endpoints": [],
+ "send_to_stories": [],
+ "exported_at": "2026-01-15T09:00:00Z",
+ "icon": ":snowflake:"
+}

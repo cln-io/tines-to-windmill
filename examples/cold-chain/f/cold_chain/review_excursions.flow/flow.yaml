@@ -1,0 +1,134 @@
+summary: Cold chain - review excursions
+description: |
+  Ported from the Tines story "Cold chain - review excursions". For each depot: fetch open
+  temperature excursions since the last run, drop those caused by defrost cycles, run four lookups on
+  each one and email a report when the lab results are bad.
+  Needs the variables and the smtp resource listed in review_excursions.NOTES.md.
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  required: [smtp]
+  properties:
+    depot_codes:
+      type: array
+      items: {type: string}
+      default: [north-quay, ridgeway, old-mill]
+    report_to: {type: string, default: coldchain-duty@example.com}
+    smtp: {type: object, format: resource-smtp}
+value:
+  modules:
+    - id: loop_depots
+      value:
+        type: forloopflow
+        iterator: {type: javascript, expr: "flow_input.depot_codes"}
+        skip_failures: true
+        parallel: false
+        modules:
+          - id: fetch_excursions
+            value:
+              type: rawscript
+              language: bun
+              content: "!inline fetch_excursions.ts"
+              input_transforms:
+                depot: {type: javascript, expr: "flow_input.iter.value"}
+                api_token: {type: static, value: "$var:f/cold_chain/tracker_api_token"}
+                cursor_var: {type: static, value: f/cold_chain/excursion_cursor}
+          - id: loop_excursions
+            value:
+              type: forloopflow
+              iterator: {type: javascript, expr: "results.fetch_excursions.alerts"}
+              skip_failures: true
+              parallel: false
+              modules:
+                - id: lookup_carrier
+                  value:
+                    type: rawscript
+                    language: bun
+                    content: "!inline lookup_carrier.ts"
+                    input_transforms:
+                      alert: {type: javascript, expr: "flow_input.iter.value"}
+                      api_key: {type: static, value: "$var:f/cold_chain/carrier_directory_key"}
+                - id: lookups
+                  value:
+                    type: branchall
+                    parallel: true
+                    branches:
+                      - summary: Lab report
+                        skip_failure: true
+                        modules:
+                          - id: lab_report
+                            value:
+                              type: rawscript
+                              language: bun
+                              content: "!inline lab_report.ts"
+                              input_transforms:
+                                alert: {type: javascript, expr: "flow_input.iter.value"}
+                                api_key: {type: static, value: "$var:f/cold_chain/lab_api_key"}
+                      - summary: Claims register
+                        skip_failure: true
+                        modules:
+                          - id: claims
+                            value:
+                              type: rawscript
+                              language: bun
+                              content: "!inline claims.ts"
+                              input_transforms:
+                                alert: {type: javascript, expr: "flow_input.iter.value"}
+                                api_key: {type: static, value: "$var:f/cold_chain/claims_register_key"}
+                      - summary: Sensor audit
+                        skip_failure: true
+                        modules:
+                          - id: sensor_audit
+                            value:
+                              type: rawscript
+                              language: bun
+                              content: "!inline sensor_audit.ts"
+                              input_transforms:
+                                alert: {type: javascript, expr: "flow_input.iter.value"}
+                                api_key: {type: static, value: "$var:f/cold_chain/sensor_audit_key"}
+                      - summary: Chart of the sensor trace
+                        skip_failure: true
+                        modules:
+                          - id: chart
+                            value:
+                              type: rawscript
+                              language: bun
+                              content: "!inline chart.ts"
+                              input_transforms:
+                                alert: {type: javascript, expr: "flow_input.iter.value"}
+                                api_key: {type: static, value: "$var:f/cold_chain/chart_service"}
+                - id: decide
+                  value:
+                    type: rawscript
+                    language: bun
+                    content: "!inline decide.ts"
+                    input_transforms:
+                      alert: {type: javascript, expr: "flow_input.iter.value"}
+                      carrier: {type: javascript, expr: "results.lookup_carrier"}
+                      lookups: {type: javascript, expr: "results.lookups"}
+                - id: send_if_bad
+                  value:
+                    type: branchone
+                    branches:
+                      - summary: Lab results are bad
+                        expr: "results.decide.send === true"
+                        modules:
+                          - id: send_report
+                            value:
+                              type: rawscript
+                              language: bun
+                              content: "!inline send_report.ts"
+                              input_transforms:
+                                smtp: {type: javascript, expr: "flow_input.smtp"}
+                                to: {type: javascript, expr: "flow_input.report_to"}
+                                report: {type: javascript, expr: "results.decide"}
+                    default: []
+          - id: save_cursor
+            value:
+              type: rawscript
+              language: bun
+              content: "!inline save_cursor.ts"
+              input_transforms:
+                depot: {type: javascript, expr: "flow_input.iter.value"}
+                latest_s: {type: javascript, expr: "results.fetch_excursions.latest_s"}
+                cursor_var: {type: static, value: f/cold_chain/excursion_cursor}

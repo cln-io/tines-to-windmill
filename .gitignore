@@ -1,0 +1,7 @@
+# Offline copy of the Tines function docs: Tines' documentation, kept local.
+# Fetch the source pages with scripts/fetch_tines_function_docs.py.
+references/tines-functions/
+
+__pycache__/
+*.pyc
+.DS_Store
