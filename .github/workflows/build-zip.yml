@@ -1,0 +1,148 @@
+name: Build skill zip
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SKILL_NAME: tines-to-windmill
+  ZIP_NAME: tines-to-windmill-skill.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the example flow
+        run: |
+          set +e
+          python3 scripts/validate_flow.py \
+            examples/cold-chain/f/cold_chain/review_excursions.flow \
+            --story examples/cold-chain/story.json > "$RUNNER_TEMP/validate.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/validate.log"
+          result=$(grep '^RESULT:' "$RUNNER_TEMP/validate.log" | tail -n 1 || true)
+          if [ "$status" -ne 0 ]; then
+            echo "::error::validate_flow.py exited with status $status"
+            exit 1
+          fi
+          case "$result" in
+            "RESULT: OK"*) ;;
+            *)
+              echo "::error::validate_flow.py did not report RESULT: OK (got: ${result:-no RESULT line})"
+              exit 1
+              ;;
+          esac
+
+      - name: Compile the scripts
+        run: python3 -m compileall -q scripts
+
+      - name: Build the zip
+        run: |
+          mkdir -p dist
+          git archive --format=zip --prefix="$SKILL_NAME/" -o "dist/$ZIP_NAME" HEAD
+
+      - name: Check the zip
+        run: |
+          python3 - "dist/$ZIP_NAME" "$SKILL_NAME" <<'EOF'
+          import os
+          import re
+          import sys
+          import zipfile
+
+          path, skill = sys.argv[1], sys.argv[2]
+          MAX_TOTAL = 50 * 1024 * 1024
+          MAX_FILE = 10 * 1024 * 1024
+          MAX_FILES = 500
+          errors = []
+
+          with zipfile.ZipFile(path) as zf:
+              infos = zf.infolist()
+              files = [i for i in infos if not i.is_dir()]
+              tops = {i.filename.split("/", 1)[0] for i in infos}
+              if tops != {skill}:
+                  errors.append("expected one top-level folder %r, found %s" % (skill, sorted(tops)))
+              names = {i.filename for i in files}
+              skill_md = skill + "/SKILL.md"
+              if skill_md not in names:
+                  errors.append("%s is missing" % skill_md)
+              else:
+                  head = zf.read(skill_md).decode("utf-8", "replace")
+                  m = re.match(r"---\s*\n(.*?)\n---", head, re.S)
+                  fm_name = None
+                  if m:
+                      nm = re.search(r"^name:\s*(\S+)\s*$", m.group(1), re.M)
+                      fm_name = nm.group(1).strip("'\"") if nm else None
+                  if fm_name != skill:
+                      errors.append("SKILL.md frontmatter name is %r, expected %r" % (fm_name, skill))
+              for excluded in (".github/", ".gitignore", ".gitattributes"):
+                  hits = [n for n in names if n[len(skill) + 1:].startswith(excluded)]
+                  if hits:
+                      errors.append("excluded path present: %s" % hits[0])
+              total = sum(i.file_size for i in files)
+              if not files:
+                  sys.exit("::error::the zip has no files")
+              largest = max(files, key=lambda i: i.file_size)
+              if len(files) > MAX_FILES:
+                  errors.append("%d files, limit is %d" % (len(files), MAX_FILES))
+              if total > MAX_TOTAL:
+                  errors.append("%d bytes uncompressed, limit is %d" % (total, MAX_TOTAL))
+              for i in files:
+                  if i.file_size > MAX_FILE:
+                      errors.append("%s is %d bytes, limit is %d" % (i.filename, i.file_size, MAX_FILE))
+
+          zip_size = os.path.getsize(path)
+          if zip_size > MAX_TOTAL:
+              errors.append("zip is %d bytes, limit is %d" % (zip_size, MAX_TOTAL))
+
+          print("files: %d" % len(files))
+          print("uncompressed bytes: %d" % total)
+          print("zip bytes: %d" % zip_size)
+          print("largest file: %s (%d bytes)" % (largest.filename, largest.file_size))
+          for e in errors:
+              print("::error::%s" % e)
+          sys.exit(1 if errors else 0)
+          EOF
+
+      - name: Upload the zip
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: dist/${{ env.ZIP_NAME }}
+          archive: false
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the zip
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: dist
+          skip-decompress: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -f "dist/$ZIP_NAME"
+          gh release create "$TAG" "dist/$ZIP_NAME" --verify-tag --title "$TAG" --generate-notes

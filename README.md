@@ -27,6 +27,19 @@ python3 scripts/tines_outline.py examples/cold-chain/story.json --index
 python3 scripts/validate_flow.py examples/cold-chain/f/cold_chain/review_excursions.flow --story examples/cold-chain/story.json
 ```
 
+## Download
+
+A workflow builds `tines-to-windmill-skill.zip` on every push and pull
+request. It holds one folder, `tines-to-windmill/`, with `SKILL.md` inside,
+which is the layout skill uploads such as LibreChat's expect. Get it from the
+run's artifacts on the Actions tab, or from Releases once a `v*` tag exists.
+
+To build the same zip locally from the committed files:
+
+```
+git archive --format=zip --prefix=tines-to-windmill/ -o tines-to-windmill-skill.zip HEAD
+```
+
 ## Contents
 
 | Path | What it is |
