@@ -2001,6 +2001,9 @@ import nodemailer from "nodemailer";
 
 type Smtp = { host: string; port: number; user?: string; password?: string };
 const text = (v: any): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
+// Every value put into an HTML body goes through esc(). Otherwise a value that contains tags changes the email.
+const esc = (v: any): string =>
+  text(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // a081 Email branch staff
 export async function main(smtp: Smtp, recipients: string[], branch: string, day: string, reason: string) {
@@ -2014,7 +2017,7 @@ export async function main(smtp: Smtp, recipients: string[], branch: string, day
     to: recipients,                                       // one address or a list
     replyTo: "desk@example.org",
     subject: `Closure: ${text(branch)} on ${text(day)}`,
-    html: `<p>The <b>${text(branch)}</b> branch is closed on ${text(day)}.</p><p>${text(reason)}</p>`,
+    html: `<p>The <b>${esc(branch)}</b> branch is closed on ${esc(day)}.</p><p>${esc(reason)}</p>`,
   });
   return { message_id: info.messageId };
 }
@@ -2028,6 +2031,8 @@ a081 -> email_branch_staff   # Email branch staff [send_email]
 - A Hub script path is invented. Write the script.
 - The subject or the body is rewritten. Copy both from the story. Replace only the pills.
 - A plain-text body is sent as `html`, or the other way round. A body with tags is `html`. A body without tags is `text`.
+- A value is put into an `html` body without `esc()`. Data from a webhook, a page or an API can contain tags. Escape every value. If the story inserts a value that is meant to be HTML, leave that one value unescaped and say so in the notes.
+- The `html` string is built in an input transform in `flow.yaml`. Build it in the script, where `esc()` exists.
 - Attachments: a Tines attachment `{filename, base64encodedcontents}` becomes `attachments: [{ filename, content: <base64>, encoding: "base64" }]`.
 
 **Notes file**

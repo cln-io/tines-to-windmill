@@ -4,13 +4,19 @@
 //   smtp: {type: static, value: "$res:f/my_folder/smtp"}
 //   to: {type: javascript, expr: "flow_input.recipients"}
 //   subject: {type: javascript, expr: "results.transform.summary"}
-//   html: {type: javascript, expr: "`<p>${results.transform.summary}</p>`"}
+//   summary: {type: javascript, expr: "results.transform.summary"}
+// Pass the values in. Build the HTML here, never in flow.yaml.
 import nodemailer from "nodemailer";
 
 type Smtp = { host: string; port: number; user?: string; password?: string };
+const text = (v: any): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
+// Every value put into an HTML body goes through esc(). Otherwise a value that contains tags changes the email.
+const esc = (v: any): string =>
+  text(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // aNN <Tines action name>
-export async function main(smtp: Smtp, to: string[], subject: string, html: string) {
+export async function main(smtp: Smtp, to: string[], subject: string, summary: string) {
+  const html = `<p>${esc(summary)}</p>`;   // the story's body, with each pill as esc(value)
   const transport = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,

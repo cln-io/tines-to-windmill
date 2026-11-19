@@ -152,7 +152,7 @@ value:
     #       smtp: {type: static, value: "$res:f/my_folder/smtp"}
     #       to: {type: javascript, expr: "flow_input.recipients"}
     #       subject: {type: javascript, expr: "results.transform.summary"}
-    #       html: {type: javascript, expr: "`<p>${results.transform.summary}</p>`"}
+    #       summary: {type: javascript, expr: "results.transform.summary"}
     ## State write at the end, after the work succeeded. Same variable as state_read.
     # - id: state_write
     #   value:

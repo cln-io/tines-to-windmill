@@ -263,6 +263,9 @@ step (`http_get.ts`, `http_post.ts`, `transform.ts`, `state_read.ts`,
 - Text with `<%for%>` or `<%if%>` tags becomes a function that builds the
   string with ordinary loops. See `references/tines-formula-language.md` section 8.
 - Scripts throw on failure. Do not catch an error only to hide it.
+- An HTML email body is built inside the script, and every value inserted
+  into it goes through an `esc()` helper (recipe 22). Data from a webhook, a
+  page or an API can contain tags.
 - If the story uses credentials or settings that differ per environment, make
   the variable path a flow input with a default.
 
@@ -348,6 +351,7 @@ continue with the next workflow in `PLAN.md`.
   seconds field.
 - Inventing the body of a lambda or the content of a resource.
 - An unbounded retry or polling loop.
+- Putting a value into an HTML email body without escaping it.
 - Catching every error around a state read, so that a permission error looks
   like a first run.
 - Capping or stopping the work early while still advancing the polling cursor, so the skipped items are never processed.
