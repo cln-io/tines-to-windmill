@@ -38,6 +38,8 @@ python3 scripts/validate_flow.py examples/cold-chain/f/cold_chain/review_excursi
 | `references/tines-formulas-to-ts.md` | Every Tines formula function with a TypeScript equivalent |
 | `references/tines-formulas-examples.md` | Worked formula translations |
 | `references/windmill-openflow.md` | How to write a valid Windmill flow by hand |
+| `references/patterns.md` | One copyable recipe per recurring Tines shape |
+| `templates/` | Flow skeleton, step scripts, schedule, notes and plan templates |
 | `references/worked-example.md` | Walkthrough of porting one example story |
 | `examples/cold-chain/` | An invented story export and its finished Windmill flow |
 | `scripts/tines_outline.py` | Compact digest of a story export |

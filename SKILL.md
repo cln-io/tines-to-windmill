@@ -77,6 +77,7 @@ python3 scripts/ref.py --search suspend resume  find the sections that mention w
 | Translate one formula function to TypeScript | `python3 scripts/tines_fn.py NAME` for the full entry, or `ref.py formulas-to-ts --search NAME` for the short table row |
 | See a full formula translated | `ref.py formulas-examples --toc` |
 | Write `flow.yaml`: step types, expressions, loops, branches, triggers | `ref.py openflow --toc`, then the section you need |
+| Copy a working pattern for one Tines shape | `ref.py patterns 0` for the list, then `ref.py patterns <number>` |
 | See the whole method applied once | `ref.py worked-example --toc` |
 | See a complete story export and its finished flow | `examples/cold-chain/` |
 
@@ -93,7 +94,7 @@ webhook or page), its size, the credentials and resources it uses, embedded
 sub-stories (`s1`, ...), stories that are called but not in the export, and
 resources that are called as functions.
 
-Write `OUT/PLAN.md` with one line per workflow:
+Write `OUT/PLAN.md` (start from `templates/PLAN.md`) with one line per workflow:
 
 ```
 w04 | sync_open_tickets | schedule 15 6 * * * Europe/Oslo | 7 actions | TODO
@@ -183,38 +184,48 @@ and list it in the notes file.
 
 ### Step 5. Design the steps
 
-Group the actions into steps using this table. Read
-`references/worked-example.md` section 2 if you are unsure how to group.
+Group the actions into steps using this table. The last column is the recipe
+number in `references/patterns.md`. A recipe shows the shape as the outline
+prints it, a complete `flow.yaml` fragment, the step files and the map lines.
+For every shape in your workflow, read its recipe and copy from it:
 
-| Tines shape | Windmill |
-|---|---|
-| Schedule on an action | Separate `<flow_path>.schedule.yaml`. Windmill cron has 6 fields with seconds first: Tines `*/5 * * * *` becomes `0 */5 * * * *`. Keep the timezone. One file per cron line. |
-| Webhook action | Flow inputs for the body fields. Windmill webhooks take POST: if the Tines webhook also accepted GET, say so in the notes. The flow's built-in webhook, or an `http_trigger.yaml` for a custom path. Add a preprocessor if headers or query are needed. |
-| Page (form) that starts a workflow | Flow input `schema` with one property per page field. Tell the user that a styled public page needs a Windmill app. |
-| Page in the middle of a workflow | A step with `suspend` (approval or resume form). |
-| HTTP request | `rawscript` in `bun` using `fetch`. |
-| HTTP request followed by status triggers (`200`, `404`) | The same script: check `res.status` and throw or return. |
-| Retry settings, or a trigger -> delay -> back-link loop | Step-level `retry`, or a bounded loop inside the script. Always set a maximum. |
-| Event transform, message-only | Fold into the script of the next step that uses it. Keep a separate step only when several later steps read it. |
-| Explode -> per-item work -> implode | `forloopflow`. The loop result is the array. Drop the prep and implode plumbing. |
-| Trigger with a no-match link (if / else) | `branchone`. |
-| One action linking to several actions | `branchall` if a later step needs all the results. Otherwise put them in sequence. |
-| Group action | Inline its steps. Make it a separate flow, called with `type: flow`, only if several workflows use it. |
-| Send to story | `type: flow` with the path of the ported story. If it is not ported yet, use its planned path from `PLAN.md`, pass the Tines payload keys unchanged as its inputs, and list it under Setup in the notes as a dependency. This is not a `MISSING` stub. If the called story is not in the export at all, it is missing logic (rule 5). |
-| Several links leading into the same action | Write that work once. Put the parts that differ in a `branchone` or in one script that decides, and put the shared step after it. Never copy a step once per incoming link. |
-| A payload field set to `=META` or built from `META.x` | Build a small object in the script from the values that are really used later. Say so in the notes. |
-| Deduplicate | A script that keeps seen keys in `wmill.getState()` / `setState()`. |
-| Throttle | First check which branch it is on: it limits only the actions after it. On the main work: flow `concurrent_limit` or step `sleep`. On a side branch (for example state writes only): often nothing is needed. Say what you did in the notes. |
-| Delay | Step `sleep`. |
-| Email action | A script with `nodemailer` and an `smtp` resource. |
-| Resource read (`RESOURCE.x`) | Settings or lookup table: a Windmill resource or a non-secret variable. |
-| Resource written through the Tines API | State: `setState` if one step both reads and writes it. Otherwise a non-secret variable holding JSON. |
-| `CREDENTIAL.x` | A secret variable `f/<folder>/<x>`, or a typed resource. Keep the Tines name. If a credential and a resource have the same name, add `_secret` to the credential's path. |
-| A credential that is only used to call the Tines API | Dropped together with those calls. Say so in the notes. |
-| `disable_ssl_verification` on an HTTP request | `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun. Keep it only for that host and say so in the notes. |
-| `STORY_RUN_GUID()`, `META.story_run.id` | `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID`. `WM_JOB_ID` alone changes at every step. Say so in the notes. |
-| Calls to the Tines API for anything else | No equivalent. Stub it and report it. |
-| Disabled or unreachable action | Not ported. Inside the workflow it is already `DROPPED` in the map. Disabled chains outside the workflow have no map line. |
+```
+python3 scripts/ref.py patterns 0      which outline shape is which recipe
+python3 scripts/ref.py patterns 13     one recipe
+```
+
+If you are unsure how to group actions into steps, read
+`python3 scripts/ref.py worked-example 2`.
+
+| Tines shape | Windmill | Recipe |
+|---|---|---|
+| Schedule on an action | Separate `<flow_path>.schedule.yaml`. Windmill cron has 6 fields with seconds first: Tines `*/5 * * * *` becomes `0 */5 * * * *`. Keep the timezone. One file per cron line. | 1 |
+| Webhook action | Flow inputs for the body fields. Windmill webhooks take POST: if the Tines webhook also accepted GET, say so in the notes. The flow's built-in webhook, or an `http_trigger.yaml` for a custom path. Add a preprocessor if headers or query are needed. | 2, 3 |
+| Page (form) that starts a workflow | Flow input `schema` with one property per page field. Tell the user that a styled public page needs a Windmill app. | 4 |
+| Page in the middle of a workflow | A step with `suspend` (approval or resume form). | 5 |
+| HTTP request | `rawscript` in `bun` using `fetch`. | 6 |
+| HTTP request followed by status triggers (`200`, `404`) | The same script: check `res.status` and throw or return. | 6, 7 |
+| Retry settings, or a trigger -> delay -> back-link loop | Step-level `retry`, or a bounded loop inside the script. Always set a maximum. | 8, 9 |
+| Event transform, message-only | Fold into the script of the next step that uses it. Keep a separate step only when several later steps read it. | 11, 12 |
+| Explode -> per-item work -> implode | `forloopflow`. The loop result is the array. Drop the prep and implode plumbing. | 13 |
+| Trigger with a no-match link (if / else) | `branchone`. | 14 |
+| One action linking to several actions | `branchall` if a later step needs all the results. Otherwise put them in sequence. | 15 |
+| Group action | Inline its steps. Make it a separate flow, called with `type: flow`, only if several workflows use it. | 17 |
+| Send to story | `type: flow` with the path of the ported story. If it is not ported yet, use its planned path from `PLAN.md`, pass the Tines payload keys unchanged as its inputs, and list it under Setup in the notes as a dependency. This is not a `MISSING` stub. If the called story is not in the export at all, it is missing logic (rule 5). | 18, 27 |
+| Several links leading into the same action | Write that work once. Put the parts that differ in a `branchone` or in one script that decides, and put the shared step after it. Never copy a step once per incoming link. | 16 |
+| A payload field set to `=META` or built from `META.x` | Build a small object in the script from the values that are really used later. Say so in the notes. | 26 |
+| Deduplicate | A script that keeps seen keys in `wmill.getState()` / `setState()`. | 21 |
+| Throttle | First check which branch it is on: it limits only the actions after it. On the main work: flow `concurrent_limit` or step `sleep`. On a side branch (for example state writes only): often nothing is needed. Say what you did in the notes. | 20 |
+| Delay | Step `sleep`. | 19 |
+| Email action | A script with `nodemailer` and an `smtp` resource. | 22 |
+| Resource read (`RESOURCE.x`) | Settings or lookup table: a Windmill resource or a non-secret variable. | 23 |
+| Resource written through the Tines API | State: `setState` if one step both reads and writes it. Otherwise a non-secret variable holding JSON. | 24 |
+| `CREDENTIAL.x` | A secret variable `f/<folder>/<x>`, or a typed resource. Keep the Tines name. If a credential and a resource have the same name, add `_secret` to the credential's path. | 25 |
+| A credential that is only used to call the Tines API | Dropped together with those calls. Say so in the notes. | 25 |
+| `disable_ssl_verification` on an HTTP request | `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun. Keep it only for that host and say so in the notes. | 10 |
+| `STORY_RUN_GUID()`, `META.story_run.id` | `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID`. `WM_JOB_ID` alone changes at every step. Say so in the notes. | 26 |
+| Calls to the Tines API for anything else | No equivalent. Stub it and report it. | 27 |
+| Disabled or unreachable action | Not ported. Inside the workflow it is already `DROPPED` in the map. Disabled chains outside the workflow have no map line. | 29 |
 
 Design rules:
 
@@ -232,8 +243,12 @@ Design rules:
 
 ### Step 6. Write the flow
 
-Write `flow.yaml` and one `<step_id>.ts` per step. Follow
-`references/windmill-openflow.md` sections 2 to 6.
+Write `flow.yaml` and one `<step_id>.ts` per step. Start from the files in
+`templates/`: copy `templates/flow.yaml` and the step template nearest to each
+step (`http_get.ts`, `http_post.ts`, `transform.ts`, `state_read.ts`,
+`state_write.ts`, `send_email.ts`, `ask_approval.ts`, `preprocessor.ts`,
+`failure.ts`), then edit them using the recipes. For format questions read
+`ref.py openflow` sections 2 to 6.
 
 - Every parameter of `main` needs an entry in that step's `input_transforms`,
   and every entry needs a parameter.
@@ -304,7 +319,8 @@ is not finished.
 
 ### Step 8. Write the notes file
 
-Write `<flow_name>.NOTES.md` next to the flow folder, then mark the workflow
+Write `<flow_name>.NOTES.md` next to the flow folder (start from
+`templates/FLOW_NAME.NOTES.md`), then mark the workflow
 `DONE` in `PLAN.md`. The notes file has these parts:
 
 1. **Setup.** Every variable and resource to create, with its path, whether it

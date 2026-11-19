@@ -122,6 +122,8 @@ export async function main(user_id: string, api_key: string, limit: number = 100
 - The return value must be JSON-serialisable; it becomes `results.<id>`.
 - To fail the step, `throw`. Do not return an error object to signal failure.
 - `import` any npm package by name; it is installed automatically. `fetch` and `Buffer` are built in.
+- To skip TLS certificate verification for **one** request, pass Bun's `tls` option to that `fetch`: `await fetch(url, { tls: { rejectUnauthorized: false } })`. `language: bun` only. Never switch verification off for the whole script.
+- One id for the whole flow run, the same in every step: `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID`. `WM_JOB_ID` alone is the step's own job id and changes at every step.
 - `language` values: `bun` (default), `deno`, `bunnative`, `nativets`, `python3`, `go`, `bash`, `powershell`, `php`, `rust`, `csharp`, `java`, `ruby`, `nu`, `rlang`, `ansible`, `postgresql`, `mysql`, `mssql`, `oracledb`, `bigquery`, `snowflake`, `duckdb`, `graphql`.
 - Parameter types become the step's input schema (they describe the form; they do not convert values): `string`/`number`/`boolean` map to the same JSON type; `bigint` to `integer`; `"x" | "y"` to a string `enum`; `T[]` to `array`; `object` or `{ k: string }` to `object`; `a?: T` or `a: T = v` makes it optional; `a: RT.Smtp` to `object` with `format: resource-smtp` (section 9).
 
@@ -540,7 +542,7 @@ local_part: acme-alerts
 
 - HTTP route: `route_path` has no leading `/`; `http_method` is lowercase; `request_type` is `sync`, `async` or `sync_sse`; `authentication_method` is `none`, `windmill`, `api_key`, `basic_http`, `custom_script` or `signature`.
 - Email: `parsed_email` is `{headers, text_body, html_body, attachments}`; `raw_email` is a string.
-- Webhooks need a Windmill token (`Authorization: Bearer <token>`). `<flow_path>` keeps its prefix, e.g. `.../run/f/f/acme/process_orders`.
+- Webhooks take **POST** and need a Windmill token (`Authorization: Bearer <token>`). `<flow_path>` keeps its prefix, e.g. `.../run/f/f/acme/process_orders`. A caller that can only send GET needs an HTTP route with `http_method: get`.
   - Async, returns a job UUID at once: `POST <base_url>/api/w/<workspace>/jobs/run/f/<flow_path>`
   - Sync, waits and returns the flow result: `POST <base_url>/api/w/<workspace>/jobs/run_wait_result/f/<flow_path>`
   - Result of an async run: `GET <base_url>/api/w/<workspace>/jobs_u/completed/get_result/<uuid>`
@@ -628,4 +630,6 @@ Check every item before finishing.
 - Whether `flow_env` values reach scripts as environment variables. Read them through expressions only.
 - The HTTP route URL (believed `<base_url>/api/r/<route_path>`) and the fields of the `smtp` resource type (believed `host`, `port`, `user`, `password`).
 - `error.stack` and `error.step_id` come from the spec; the docs page lists `message`, `name`, `step_id`.
+- The Bun `tls` option of `fetch`, and the environment variables `WM_ROOT_FLOW_JOB_ID`, `WM_FLOW_JOB_ID`, `WM_JOB_ID` (section 5.1): not in the OpenFlow spec, and not run.
+- That the webhook endpoints of section 10 accept POST only: the sync endpoint may also accept GET with the inputs in the query string.
 - No example was run against a Windmill instance or `wmill lint`; the flow YAML was checked against the OpenFlow spec only.

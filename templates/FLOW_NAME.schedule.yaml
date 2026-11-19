@@ -1,0 +1,16 @@
+## Schedule file. Copy it to f/my_folder/my_flow.schedule.yaml: next to the folder my_flow.flow, not inside it.
+## One file per Tines cron line. Name a second one my_flow_2.schedule.yaml.
+## Lines that start with "##" are explanations. Delete them.
+## The cron has 6 fields. Put "0" (seconds) in front of the 5 Tines fields and copy those unchanged:
+## Tines "*/20 * * * *" becomes "0 */20 * * * *".
+schedule: "0 */20 * * * *"
+## The timezone printed next to the Tines cron line.
+timezone: Europe/Dublin
+enabled: true
+## The flow path: the flow folder without ".flow".
+script_path: f/my_folder/my_flow
+is_flow: true
+## Only the flow inputs that have no default. A resource is passed as "$res:<path>".
+args: {}
+## true = do not start a run while the previous one is still running. Use it when the flow writes state.
+no_flow_overlap: true

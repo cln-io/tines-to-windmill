@@ -1,0 +1,164 @@
+## flow.yaml skeleton. Copy it to <flow_name>.flow/flow.yaml, then edit it.
+## A line that starts with "# " is optional YAML. To use it, delete the "# " and keep the indentation.
+## A line that starts with "##" is an explanation. Delete it.
+## Every step needs its own file <step_id>.ts next to flow.yaml. The step files of this folder fit this skeleton.
+## Replace my_folder and my_flow everywhere. Step ids must be unique in the whole flow.
+summary: Short title of the flow
+description: |
+  Ported from the Tines story "STORY NAME", workflow wNN.
+  One or two sentences: what the flow does.
+  Needs the variables and resources listed in my_flow.NOTES.md.
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  ## order: the layout of the run form only.
+  # order: [item_id, recipients, mode, max_items, dry_run]
+  ## required: the inputs that have no default.
+  required: [item_id]
+  properties:
+    ## One property per webhook body field, per page field, and per value the user will want to change.
+    ## Every flow_input.<name> used below must be listed here. Give every non-required input a default.
+    item_id: {type: string, description: What this input is}
+    # recipients: {type: array, items: {type: string}, default: []}
+    # mode: {type: string, enum: [fast, full], default: fast}
+    # max_items: {type: integer, default: 10}
+    # dry_run: {type: boolean, default: false}
+value:
+  ## All steps run on one worker. Only needed to share files in ./shared/.
+  # same_worker: true
+  ## At most 1 run per 60 seconds (a Tines throttle on whole runs). May need an Enterprise licence.
+  # concurrent_limit: 1
+  # concurrency_time_window_s: 60
+  ## Stop the whole run after this many seconds.
+  # timeout: 3600
+  ## A waiting webhook caller gets this step's result while the flow goes on.
+  # early_return: http_get
+  ## Runs first, only for webhook, route and email triggers. Gets the raw request, returns the flow inputs.
+  # preprocessor_module:
+  #   id: preprocessor
+  #   value:
+  #     type: rawscript
+  #     language: bun
+  #     content: "!inline preprocessor.ts"
+  #     input_transforms: {}
+  ## Runs when a step has failed. The flow still ends as failed.
+  # failure_module:
+  #   id: failure
+  #   value:
+  #     type: rawscript
+  #     language: bun
+  #     content: "!inline failure.ts"
+  #     input_transforms:
+  #       message: {type: javascript, expr: "error.message"}
+  #       name: {type: javascript, expr: "error.name"}
+  #       step_id: {type: javascript, expr: "error.step_id"}
+  modules:
+    ## State read at the start: a non-secret variable that holds JSON.
+    # - id: state_read
+    #   value:
+    #     type: rawscript
+    #     language: bun
+    #     content: "!inline state_read.ts"
+    #     input_transforms:
+    #       state_var: {type: static, value: f/my_folder/my_flow_state}
+    - id: http_get
+      summary: Fetch one item
+      ## Step settings go here, beside id and value. Never inside value.
+      ## retry: run a failed step again, 3 times, 10 seconds apart.
+      # retry:
+      #   constant: {attempts: 3, seconds: 10}
+      ## timeout: cancel the step after 120 seconds.
+      # timeout: {type: static, value: 120}
+      ## sleep: wait 30 seconds after this step (a Tines delay).
+      # sleep: {type: static, value: 30}
+      ## skip_if: do not run this step when the expression is true.
+      # skip_if: {expr: "flow_input.dry_run === true"}
+      ## stop_after_if: end the flow after this step when the expression is true. "result" is this step's result.
+      # stop_after_if: {expr: "result.item === null", skip_if_stopped: true}
+      ## continue_on_error: true lets the flow go on when this step fails. Keep false unless the story goes on too.
+      # continue_on_error: false
+      value:
+        type: rawscript
+        language: bun
+        content: "!inline http_get.ts"
+        input_transforms:
+          ## One entry per parameter of main, with the same name.
+          item_id: {type: javascript, expr: "flow_input.item_id"}
+          ## A secret: always a static "$var:<path>". A resource object: "$res:<path>".
+          api_key: {type: static, value: "$var:f/my_folder/api_key"}
+    ## A transform that several later steps read.
+    # - id: transform
+    #   value:
+    #     type: rawscript
+    #     language: bun
+    #     content: "!inline transform.ts"
+    #     input_transforms:
+    #       item: {type: javascript, expr: "results.http_get.item"}
+    ## A loop (Tines explode). Inside it the item is flow_input.iter.value. After it, read results.loop_rows.
+    # - id: loop_rows
+    #   value:
+    #     type: forloopflow
+    #     iterator: {type: javascript, expr: "results.transform.rows"}
+    #     skip_failures: true
+    #     parallel: false
+    #     modules:
+    #       - id: http_post
+    #         value:
+    #           type: rawscript
+    #           language: bun
+    #           content: "!inline http_post.ts"
+    #           input_transforms:
+    #             row: {type: javascript, expr: "flow_input.iter.value"}
+    #             api_key: {type: static, value: "$var:f/my_folder/api_key"}
+    ## If / else (Tines trigger). "default" is required: the no-match side, or [] for nothing.
+    ## Here the branch holds an approval step (a Tines page in the middle of a workflow).
+    # - id: approve_if_needed
+    #   value:
+    #     type: branchone
+    #     branches:
+    #       - summary: Approval is needed
+    #         expr: "results.transform.needs_approval === true"
+    #         modules:
+    #           - id: ask_approval
+    #             suspend:
+    #               required_events: 1
+    #               timeout: 86400
+    #               resume_form:
+    #                 schema:
+    #                   type: object
+    #                   properties:
+    #                     comment: {type: string}
+    #             value:
+    #               type: rawscript
+    #               language: bun
+    #               content: "!inline ask_approval.ts"
+    #               input_transforms:
+    #                 summary: {type: javascript, expr: "results.transform.summary"}
+    #     default: []
+    ## Call another flow (Tines send to story). The inputs are the Tines payload keys.
+    # - id: call_other_flow
+    #   value:
+    #     type: flow
+    #     path: f/my_folder/other_flow
+    #     input_transforms:
+    #       item_id: {type: javascript, expr: "flow_input.item_id"}
+    ## Send an email. The smtp resource is passed as a static "$res:<path>".
+    # - id: send_email
+    #   value:
+    #     type: rawscript
+    #     language: bun
+    #     content: "!inline send_email.ts"
+    #     input_transforms:
+    #       smtp: {type: static, value: "$res:f/my_folder/smtp"}
+    #       to: {type: javascript, expr: "flow_input.recipients"}
+    #       subject: {type: javascript, expr: "results.transform.summary"}
+    #       html: {type: javascript, expr: "`<p>${results.transform.summary}</p>`"}
+    ## State write at the end, after the work succeeded. Same variable as state_read.
+    # - id: state_write
+    #   value:
+    #     type: rawscript
+    #     language: bun
+    #     content: "!inline state_write.ts"
+    #     input_transforms:
+    #       state_var: {type: static, value: f/my_folder/my_flow_state}
+    #       last_item_id: {type: javascript, expr: "flow_input.item_id"}
