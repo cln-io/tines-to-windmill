@@ -54,6 +54,9 @@ GRAPH MARKERS
   (no-match)   link taken when a trigger's rules do NOT match
   END          no outgoing links
   DEAD-END     no outgoing links and no side effect (unused trigger/transform)
+  NO-EFFECT    (index, workflow header) no action that runs in the workflow has
+               an outside effect: no HTTP request other than GET, email, story
+               call, record, or page shown to a person. Plan: SKIP: no effect
   DISABLED     disabled; it and everything only reachable through it never runs
   UNREACHABLE  enabled, but no enabled path from any entry point
 
@@ -61,7 +64,11 @@ WHAT IS SHOWN FOR AN ACTION
   id, ref name, type/mode, links, the actions and globals it references
   (parsed from <<pills>>, =formulas and <%if%>/<%for%> text tags), action inputs,
   and its options. Formulas are never shortened. Layout, monitoring, reporting,
-  template, logo and colour settings are dropped. A run of static text longer
+  template, logo and colour settings are dropped. Multi-line text is shown as a
+  block whose marker says exactly how the text ends: `|-` no trailing newline,
+  `|` exactly one, `|+` every blank line shown is part of the text. A name
+  listed as unresolved is one no action on the path provides: it is NULL in
+  Tines, port it as null. A run of static text longer
   than 400 characters (embedded HTML/CSV/base64) is shortened to its head and
   tail with a marker `[... N chars of static text elided; full: --action ID]`.
   Pages show mode, visibility, input fields and buttons, display conditions and
@@ -70,7 +77,9 @@ WHAT IS SHOWN FOR AN ACTION
   body is embedded in this export. Webhook secrets are redacted.
 
 GLOBALS
-  CREDENTIAL.x / RESOURCE.x / other namespaces, with the actions using them.
+  CREDENTIAL.x / RESOURCE.x / other namespaces, with the actions using them
+  (an id tagged (unreachable) or (disabled) never runs). The index counts
+  only actions that run.
   `CALLED AS FUNCTION` marks a resource that holds lambdas invoked from
   formulas (<<RESOURCE.text_helpers.shorten(x, 30)>>): the lambda bodies are
   NOT in the export, ask the user for them.
@@ -115,6 +124,28 @@ LITERALS = {"TRUE", "FALSE", "NULL", "NIL"}
 PAGE_NOISE = {"fields", "page_logo", "page_width", "pages_action_color", "pages_appearance_mode",
               "pages_background_color", "mode"}
 PAGE_TEXT_TYPES = {"TITLE", "PARAGRAPH", "DIVIDER", "IMAGE"}
+
+
+def outside_effect(a):
+    """Short description of what an action changes outside the story run, or None.
+
+    HTTP GET, triggers, transforms, groups and entry points only read or route.
+    Types this script does not know are assumed to have an effect.
+    """
+    typ = a["type"]
+    if a.get("exit"):
+        return "returns data to the calling story"
+    if typ == "http_request":
+        method = a["options"].get("method")
+        method = method.strip().lower() if isinstance(method, str) else ""
+        return None if method == "get" else "HTTP %s" % (method.upper() or "request with a computed method")
+    if typ == "page":
+        return "page shown to a person" if a["in"] else None
+    if typ in ("send_email", "send_to_story", "record"):
+        return {"send_email": "sends email", "send_to_story": "calls a story", "record": "writes a record"}[typ]
+    if typ in NO_SIDE_EFFECT or typ in PLUMBING or typ in ("group", "webhook", "receive_email"):
+        return None
+    return "%s action" % typ
 
 
 def snake(name):
@@ -325,11 +356,18 @@ class Story:
     def _page(self, agent):
         page = self.pages_by_guid.get(agent.get("guid")) or {}
         elements, by_guid, by_container = [], {}, {}
-        for f in sorted(page.get("fields") or [], key=lambda f: f.get("ranking") or 0):
-            if not isinstance(f, dict):
-                continue
+        fields = [f for f in sorted(page.get("fields") or [], key=lambda f: f.get("ranking") or 0)
+                  if isinstance(f, dict)]
+        total, seen = {}, {}
+        for f in fields:
+            total[f.get("name") or ""] = total.get(f.get("name") or "", 0) + 1
+        for f in fields:
             ftype = f.get("type") or "?"
-            el = {"name": f.get("name") or "", "type": ftype}
+            name = f.get("name") or ""
+            seen[name] = seen.get(name, 0) + 1
+            # label is unique on the page: a repeated name gets #1, #2 ... in page order
+            el = {"name": name, "type": ftype,
+                  "label": "%s#%d" % (name, seen[name]) if total[name] > 1 else name}
             if ftype not in PAGE_TEXT_TYPES and ftype != "BUTTON":
                 el["ref"] = snake(f.get("name"))
             for key in ("content", "description", "options", "default_value"):
@@ -344,8 +382,8 @@ class Story:
             if f.get("required"):
                 el["required"] = True
             elements.append(el)
-            by_guid[f.get("guid")] = el["name"]
-            by_container.setdefault(f.get("container_guid"), []).append(el["name"])
+            by_guid[f.get("guid")] = el["label"]
+            by_container.setdefault(f.get("container_guid"), []).append(el["label"])
         conditions = []
         for cond in page.get("conditions") or []:
             if not isinstance(cond, dict):
@@ -443,6 +481,7 @@ class Story:
             a["in_cycle"] = aid in self._descendants(aid)
             a["end"] = not a["out"]
             a["dead_end"] = (a["end"] and a["type"] in NO_SIDE_EFFECT and not a["exit"])
+            a["effect"] = outside_effect(a)
 
     def _descendants(self, aid):
         seen, queue = set(), deque([aid])
@@ -497,6 +536,8 @@ class Story:
                 wid = "%sw%02d" % (self.prefix, len(self.workflows) + 1)
                 wf = {"id": wid, "top": ids, "all": self.members(ids), "entries": entries,
                       "disabled": all(self.actions[i]["disabled"] for i in entries)}
+                wf["no_effect"] = not wf["disabled"] and not any(
+                    self.actions[i]["status"] == "active" and self.actions[i]["effect"] for i in wf["all"])
                 self.workflows.append(wf)
                 for i in wf["all"]:
                     self.actions[i]["workflow"] = wid
@@ -556,16 +597,17 @@ class Story:
                 refs = []
                 for ref, paths in found.items():
                     cands = by_ref[ref]
-                    upstream = sorted((c for c in cands if c in dist), key=lambda c: dist[c])
+                    upstream = sorted((c for c in cands if c in dist and c != i), key=lambda c: dist[c])
                     entry = {"ref": ref, "paths": sorted(set(paths))}
                     if upstream:
                         entry["actions"] = upstream
                         entry["resolution"] = "ambiguous" if len(upstream) > 1 else "ok"
+                    elif i in cands:
+                        entry["actions"] = [i]
+                        entry["resolution"] = "self"
                     else:
                         entry["actions"] = cands
                         entry["resolution"] = "not-upstream"
-                    if upstream == [i]:
-                        entry["resolution"] = "self"
                     refs.append(entry)
                 a["refs"], a["globals"], a["unresolved"], a["called"] = refs, globals_used, unresolved, called
                 for g in globals_used:
@@ -723,8 +765,12 @@ def emit(key, value, indent, out):
     pad = " " * indent
     head = pad + (key + ":" if key is not None else "-")
     if isinstance(value, str) and "\n" in value:
-        out.append(head + " |")
-        out.extend((pad + "  " + line).rstrip() for line in value.split("\n"))
+        # YAML chomping says exactly how the text ends: |- none, | one, |+ all the newlines shown
+        body = value.rstrip("\n")
+        trailing = len(value) - len(body)
+        out.append(head + (" |-" if trailing == 0 else " |" if trailing == 1 else " |+"))
+        out.extend((pad + "  " + line).rstrip() for line in body.split("\n"))
+        out.extend([""] * (trailing - 1))
     elif isinstance(value, (dict, list)) and value:
         flat = json.dumps(value, ensure_ascii=False)
         if len(flat) <= 160 and not has_multiline(value):
@@ -874,7 +920,10 @@ class Renderer:
         if uses:
             out.append(sp + "uses: " + ", ".join(uses))
         if a["unresolved"]:
-            out.append(sp + "unresolved names (not an action in scope): " + ", ".join(a["unresolved"]))
+            out.append(sp + "unresolved names (no such action on the path: NULL in Tines, port as null): "
+                       + ", ".join(a["unresolved"]))
+        if a["effect"] and a["type"] not in ("send_email", "send_to_story", "record"):
+            out.append(sp + "outside effect: " + a["effect"])
         if a["calls"]:
             c = a["calls"]
             if not c["story"]:
@@ -919,10 +968,12 @@ class Renderer:
         for el in page["elements"]:
             if el["type"] in PAGE_TEXT_TYPES:
                 if el.get("content"):
-                    emit("text %s" % el["type"].lower(), self.shorten(el["content"], a["id"]), body + 2, out)
+                    tag = " %s" % json.dumps(el["label"], ensure_ascii=False) if el["label"] != el["name"] else ""
+                    emit("text %s%s" % (el["type"].lower(), tag), self.shorten(el["content"], a["id"]), body + 2, out)
                 continue
             kind = "button" if el["type"] == "BUTTON" else "input"
-            label = "%s %s [%s]%s" % (kind, el.get("ref") or json.dumps(el["name"], ensure_ascii=False),
+            shown = el["label"] if kind == "button" or el["label"] != el["name"] else el.get("ref")
+            label = "%s %s [%s]%s" % (kind, json.dumps(shown, ensure_ascii=False) if kind == "button" else shown,
                                       el["type"], " required" if el.get("required") else "")
             detail = {k: el[k] for k in ("content", "description", "default_value", "options") if k in el}
             if kind == "button":
@@ -933,7 +984,7 @@ class Renderer:
             else:
                 out.append("%s  %s" % (sp, label))
         for cond in page["conditions"]:
-            out.append("%s  condition: %s" % (sp, cond))
+            out.append("%s  display condition (layout only, not logic): %s" % (sp, cond))
         if page["success_message"]:
             emit("success_message", page["success_message"], body, out)
         targets = ", ".join("%s %s" % (i, self.x.actions[i]["ref"]) for i, _ in a["out"])
@@ -955,7 +1006,9 @@ class Renderer:
             note = ""
             if called:
                 note = "  CALLED AS FUNCTION: %s - lambda body not in export, ask the user for it" % ", ".join(called)
-            out.append("  %s: %s%s" % (key, ", ".join(users), note))
+            tagged = [i if story.actions[i]["status"] == "active" else "%s(%s)" % (i, story.actions[i]["status"])
+                      for i in users]
+            out.append("  %s: %s%s" % (key, ", ".join(tagged), note))
 
     def notes_block(self, story, top_ids, out, scopes=(None,)):
         """Sticky notes of the given scopes (None = top level, or group ids) near the wanted actions."""
@@ -1059,8 +1112,10 @@ class Renderer:
                 plain += 1
         if plain > INDEX_MEMBER_CAP:
             members.append("+%d more top-level actions (--workflow %s --graph)" % (plain - INDEX_MEMBER_CAP, wf["id"]))
+        # names are counted for actions that actually run (all of them when the whole workflow is disabled)
+        live = [i for i in wf["all"] if wf["disabled"] or acts[i]["status"] == "active"]
         names = {}
-        for i in wf["all"]:
+        for i in live:
             for g in acts[i]["globals"]:
                 ns, _, key = g.partition(".")
                 if ns.split(" ")[0] in ACTION_SCOPED_NS or not key:
@@ -1072,19 +1127,23 @@ class Renderer:
                         bucket.remove(key)
                     bucket.append(label)
         stories = []
-        for i in wf["all"]:
+        for i in live:
             c = acts[i]["calls"]
             if c and c["story"]:
                 tag = c["embedded"] or "%s(not in export)" % c["story"]
                 if tag not in stories:
                     stories.append(tag)
         names.pop("STORY", None)
-        parts = ["%s%s" % (wf["id"], " DISABLED" if wf["disabled"] else ""), entries]
+        parts = ["%s%s%s" % (wf["id"], " DISABLED" if wf["disabled"] else "",
+                             " NO-EFFECT" if wf["no_effect"] else ""), entries]
         if members:
             parts.append("then: " + ", ".join(members))
         size = ", " + short_size(self.workflow_size(story, wf)) if with_size else ""
-        parts.append("%d actions%s" % (len(wf["all"]), size))
-        short = {"CREDENTIAL": "CRED", "RESOURCE": "RES"} if with_size else {}
+        running = sum(1 for i in wf["all"] if acts[i]["status"] == "active")
+        parts.append("%d actions (%d run)%s" % (len(wf["all"]), running, size))
+        short = {"CREDENTIAL": "CRED", "RESOURCE": "RES", "PAGE": "links to page"}
+        if not with_size:
+            short = {"PAGE": "links to page"}
         for ns in sorted(names, key=lambda n: (0 if n == "CREDENTIAL" else 1 if n == "RESOURCE" else 2, n)):
             parts.append("%s: %s" % (short.get(ns, ns), ", ".join(sorted(names[ns]))))
         if stories:
@@ -1106,9 +1165,10 @@ class Renderer:
                 out.append("")
             self.story_head(story, out, brief=True)
             out.append("")
-            out.append("WORKFLOWS of %s (linked actions with an entry point. {N} = group of N actions, "
-                       "tok = size of --workflow output, CRED/RES = CREDENTIAL/RESOURCE names, "
-                       "x() = resource called as a function)" % story.sid)
+            out.append("WORKFLOWS of %s (linked actions with an entry point. {N} = group of N actions; "
+                       "run = enabled and reachable; tok = size of --workflow output; CRED/RES/calls STORY "
+                       "count only actions that run; x() = resource called as a function; NO-EFFECT = "
+                       "nothing that runs writes anything outside the story: plan it as SKIP: no effect)" % story.sid)
             for wf in story.workflows:
                 out.append(self.workflow_line(story, wf))
             if not story.workflows:
@@ -1121,21 +1181,35 @@ class Renderer:
                 out.append("  " + "; ".join(" > ".join(
                     "%s %s%s%s" % (i, acts[i]["ref"], "{%d}" % len(acts[i]["children"]) if acts[i]["children"] else "",
                                    " DISABLED" if acts[i]["disabled"] else "") for i in ids) for ids in story.orphans))
+        runs = lambda i: self.x.actions[i]["status"] == "active"
+        dead_wf = {w["id"] for st in self.x.stories for w in st.workflows if w["no_effect"]}
+        tag = lambda ids: ", ".join(sorted(w + ("(NO-EFFECT)" if w in dead_wf else "") for w in ids))
         called = self.x.called_stories
         if called and len(stories) == len(self.x.stories):
             out.append("")
-            out.append("STORIES CALLED (send_to_story actions)")
+            out.append("STORIES CALLED (send_to_story actions that run)")
             for slug in sorted(called):
                 rec = called[slug]
-                wfs = sorted({self.x.actions[i].get("workflow") or "not triggered" for i in rec["callers"]})
+                live = [i for i in rec["callers"] if runs(i)]
+                wfs = sorted({self.x.actions[i].get("workflow") or "?" for i in live})
                 where = ("embedded as %s" % rec["embedded"]) if rec["embedded"] else "NOT in this export"
-                out.append("  STORY.%s: %s | %d call(s) from %s" % (slug, where, len(rec["callers"]), ", ".join(wfs)))
+                dead = len(rec["callers"]) - len(live)
+                out.append("  STORY.%s: %s | %s%s" % (
+                    slug, where,
+                    "%d call(s) from %s" % (len(live), tag(wfs)) if live else "never called by an action that runs",
+                    " (+%d in disabled/unreachable actions)" % dead if dead else ""))
         fn_rows = []
         for story in stories:
             for key, rec in sorted(story.namespaces.items()):
-                if rec["called"]:
-                    fn_rows.append("  %s: %s (%d use(s) in %s)" % (key, ", ".join(sorted(rec["called"])),
-                                                                  len(rec["actions"]), story.sid))
+                if not rec["called"]:
+                    continue
+                users = [i for i in rec["actions"] if story.actions[i]["called"].get(key)]
+                live = [i for i in users if runs(i)]
+                wfs = sorted({story.actions[i].get("workflow") or "?" for i in live})
+                fn_rows.append("  %s: %s | %s" % (
+                    key, ", ".join(sorted(rec["called"])),
+                    "called by %d action(s) that run, in %s" % (len(live), tag(wfs)) if live
+                    else "ONLY called by disabled/unreachable actions (%s): not needed" % ", ".join(users)))
         if fn_rows:
             out.append("")
             out.append("RESOURCES CALLED AS FUNCTIONS (lambda bodies are not in the export: ask the user)")
@@ -1172,6 +1246,9 @@ class Renderer:
 
     def workflow_text(self, story, wf, mode="full"):
         out = ["WORKFLOW " + self.workflow_line(story, wf, with_size=False)]
+        if wf["no_effect"]:
+            out.append("  NO-EFFECT: no action that runs here writes anything outside the story (no HTTP write, "
+                       "email, story call, record or page shown). Nothing to port unless the user says otherwise.")
         out.append("")
         out.append("GRAPH (indent = link)")
         self.tree(story, None, wf["top"], 2, out)
@@ -1299,7 +1376,7 @@ class Renderer:
         if a["globals"]:
             out.append("  globals: " + ", ".join(g + ("()" if g in a["called"] else "") for g in a["globals"]))
         if a["unresolved"]:
-            out.append("  unresolved names: " + ", ".join(a["unresolved"]))
+            out.append("  unresolved names (NULL in Tines, port as null): " + ", ".join(a["unresolved"]))
         if a["calls"]:
             out.append("  calls: " + json.dumps(a["calls"], ensure_ascii=False))
         dump = lambda v: json.dumps(v, indent=2, ensure_ascii=False).replace("\n", "\n  ")
@@ -1329,7 +1406,7 @@ def render_json(export, story, ids):
     keep = ("id", "name", "ref", "type", "mode", "status", "status_reason", "disabled", "schedule",
             "entry", "story", "workflow", "group", "children", "guid", "options", "inputs", "page",
             "record", "calls", "refs", "globals", "called", "unresolved", "fan_out", "join",
-            "in_cycle", "end", "dead_end", "exit")
+            "in_cycle", "end", "dead_end", "exit", "effect")
     actions = []
     for aid in ids:
         a = story.actions[aid]
@@ -1356,7 +1433,7 @@ def render_json(export, story, ids):
         },
         "stories": [{"id": s.sid, "name": s.name, "slug": s.slug, "actions": len(s.order)} for s in export.stories],
         "workflows": [{"id": w["id"], "entries": w["entries"], "top": w["top"], "actions": len(w["all"]),
-                       "disabled": w["disabled"]} for w in story.workflows if set(w["top"]) & wanted],
+                       "disabled": w["disabled"], "no_effect": w["no_effect"]} for w in story.workflows if set(w["top"]) & wanted],
         "not_triggered": [o for o in story.orphans if set(o) & wanted],
         "called_stories": export.called_stories,
         "actions": actions,
@@ -1371,11 +1448,13 @@ def render_map_template(export, selector, story, ids):
         "# Tines action map for story: %s" % export.main.name,
         "# workflow: %s" % selector,
         "# One line per Tines action:  <action id> -> <target>   # name",
-        "# Replace every TODO with ONE of:",
+        "# Replace the placeholder after each arrow with ONE of:",
         "#   module_id                the id of the flow.yaml module that does this action's work",
         "#   module_a, module_b       several module ids, comma separated",
         "#   flow_input.name          the action became a flow input",
-        "#   DROPPED: reason          deliberately not translated (say why)",
+        "#   flow_input.a, flow_input.b, module_id   several inputs and/or modules (a page with many fields)",
+        "#   DROPPED: reason          deliberately not translated (say why; if the action wrote something",
+        "#                            outside the story, say why that is no longer needed)",
         "# Do not delete lines. Check with: validate_flow.py <dir.flow> --story <story.json>",
         "",
     ]

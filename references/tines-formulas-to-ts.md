@@ -2,7 +2,7 @@
 
 Use this file to translate the functions inside a Tines option value into TypeScript. All 227 functions of the official reference (tines.com/docs/formulas, Nov 2026) are in section 2. "unverified" = the docs do not settle it.
 
-**Optional catalogue.** `python3 scripts/tines_fn.py NAME` prints a longer entry for one function (every argument, edge cases, a tested helper) from `references/tines-functions/`. That folder is local material and is not shipped with this skill: to build it, download the function pages with `python3 scripts/fetch_tines_function_docs.py <dir>` and write one `## NAME` entry per function. This table stands on its own without it; a row that mentions the catalogue still gives the safe short form.
+**Function catalogue.** `python3 scripts/tines_fn.py NAME` prints a longer entry for one function (every argument, edge cases, a tested helper, examples) from `references/tines-functions/`. Use it when a row here is not enough. This table also stands on its own; a row that mentions the catalogue still gives the safe short form.
 
 Companion files: syntax, operators, references, lambdas, truthiness and text-mode control tags are in [tines-formula-language.md](tines-formula-language.md); eleven worked translations are in [tines-formulas-examples.md](tines-formulas-examples.md).
 

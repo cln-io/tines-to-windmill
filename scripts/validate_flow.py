@@ -5,7 +5,7 @@ USAGE
   validate_flow.py <dir.flow | flow.yaml | flow.json> [--story story.json]
                    [--workflow w03] [--map tines_action_map.md] [--strict]
 
-  Exit code: 0 = no errors, 1 = errors found (or warnings with --strict),
+  Exit code: 0 = no errors, 1 = errors found (or any warning with --strict),
              2 = the flow could not be read at all.
   Every finding is one line:  ERROR|WARN [check-name] where: what is wrong. Fix: ...
   Fix all ERROR lines, re-run, repeat until the last line says RESULT: OK.
@@ -28,6 +28,15 @@ CHECKS (field names follow openflow.openapi.yaml, OpenFlow spec 1.876.1)
   - leftover Tines syntax anywhere: <<pills>>, CREDENTIAL.x, RESOURCE.x,
     =FORMULA( values, the |> pipe
   - $var:/$res: paths look like u/<user>/<name> or f/<folder>/<name>
+  - a step with `suspend` is a script that calls getResumeUrls (never identity)
+  - schedule files next to the flow folder (<flow_name>.schedule.yaml, or any
+    *.schedule.yaml whose script_path is this flow): cron has 6 fields with
+    seconds first (a 5-field cron is an ERROR, the Fix gives the corrected
+    value), timezone present, script_path equals the flow path, is_flow: true.
+    With --story: every cron line of the workflow's enabled entry actions has
+    a schedule file with that cron (after adding the seconds field)
+  - WARN: a `type: flow` / `type: script` step whose path has no folder or file
+    in the output tree; it must exist in the workspace before the flow runs
   Heuristic checks are WARN, not ERROR.
 
 COVERAGE (--story): the tines_action_map.md convention
@@ -49,7 +58,12 @@ COVERAGE (--story): the tines_action_map.md convention
       a01 -> fetch_orders                id of the flow.yaml module doing this work
       a12 -> enrich, summarize           several module ids, comma separated
       a03 -> flow_input.shop_ids         the action became a flow input
+      a05 -> flow_input.name, flow_input.email, greet   a list mixing inputs and
+                                         module ids (a page with several fields)
       a34 -> DROPPED: output never used  deliberately not translated, with a reason
+  DROPPED on an action with an outside effect (HTTP other than GET, email,
+  story call, record, page shown to a person) gives a WARN that quotes the
+  reason: the reason must say why the effect is no longer needed.
   Never delete a line. Disabled and unreachable actions come pre-filled as
   DROPPED and need no attention.
 
@@ -63,6 +77,33 @@ COVERAGE (--story): the tines_action_map.md convention
   reads flow.yaml and the files it references with !inline, so the extra file
   is not pushed. --map PATH overrides the location (default: inside the flow
   folder, then its parent folder).
+
+BEHAVIOUR (--story): "valid, but does it do what the story does?"
+  After the structural findings a BEHAVIOUR block lists heuristic WARN lines,
+  tagged [behaviour:<check>], and a `setup names` line to paste into the notes.
+  The RESULT line counts them separately; `RESULT: OK` with behaviour warnings
+  means: fix each one or explain it in the notes file. Checks:
+    http            a mapped HTTP action's step mentions neither its host nor a
+                    word of its path, or never uses its (non-GET) method
+    email           a mapped email action's step does not send mail
+    story-call      a mapped send-to-story action has no `type: flow` step
+                    (a stub that throws MISSING is accepted)
+    effect          an action with an outside effect is mapped only to flow
+                    inputs or to steps that run no script
+    branch          a trigger with match and no-match links, both sides mapped,
+                    but no branchone / skip_if / if anywhere in their steps
+    loop            an explode or looping action mapped to steps that are not a
+                    loop, not inside one, and whose script has no loop
+    cycle           a retry/poll loop of links mapped to steps with no retry,
+                    no whileloopflow and no loop in the script
+    unbounded-loop  while(true) / for(;;) in a script with no visible bound
+    duplicate-step  two steps running the same !inline file, or two step
+                    scripts more than 90% identical
+    setup           a CREDENTIAL / RESOURCE name used by a mapped action that
+                    appears nowhere in the flow (names are matched literally:
+                    keep the Tines name as the last path segment)
+  Calls to the Tines API itself (x-user-token header, global_resources) are
+  exempt from http/setup: they are replaced, not ported.
 
 YAML LOADING
   Uses PyYAML when it is importable. Otherwise a built-in loader handles the
@@ -881,6 +922,19 @@ def suggest(word, options):
 # Validator
 # ==========================================================================
 
+def flow_location(flow_dir):
+    """(flow name, workspace path like f/shop/sync_orders, output root) from the folder path."""
+    if not flow_dir:
+        return None, None, None
+    full = os.path.abspath(flow_dir)
+    name = re.sub(r"(\.flow|__flow)$", "", os.path.basename(full))
+    parts = full.split(os.sep)
+    for k in range(len(parts) - 2, 0, -1):
+        if parts[k] in ("f", "u", "g"):
+            return name, "/".join(parts[k:-1] + [name]), os.sep.join(parts[:k]) or os.sep
+    return name, None, None
+
+
 RESULTS_DOT = re.compile(r"(?<![\w$.])results\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
 RESULTS_BR = re.compile(r"(?<![\w$.])results\s*(?:\?\.)?\[\s*([\"'`])([^\"'`]+)\1\s*\]")
 INPUT_DOT = re.compile(r"(?<![\w$.])flow_input\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
@@ -889,6 +943,7 @@ INPUT_WHOLE = re.compile(r"(?<![\w$.])flow_input\b(?!\s*(?:\?\.|\.|\[))")
 PILL = re.compile(r"<<\s*[A-Za-z_][\s\S]{0,400}?>>")
 TINES_NS = re.compile(r"(?<![\w$.])(CREDENTIAL|RESOURCE|GROUP_INPUT)\.[A-Za-z_]\w*")
 TINES_NS_SOFT = re.compile(r"(?<![\w$.])(LOCAL|INPUT|META|STORY)\.[a-z_]\w*")
+DYNAMIC_PART = re.compile(r"<<.*?>>|<%.*?%>", re.S)
 TINES_FUNC = re.compile(r"(?<![\w$.])(?<!new )([A-Z][A-Z0-9_]{2,})\s*\(")
 VARRES = re.compile(r"\$(var|res):([^\s\"'`,;)}\]]*)")
 
@@ -906,6 +961,10 @@ class Validator:
         self.whole_input_used = False
         self.noted = set()
         self.resolved = {}       # id(rawscript value) -> script source after !inline resolution
+        self.modules = {}        # id -> module mapping
+        self.inline_files = {}   # inline file name -> [module ids]
+        self.schedules = []      # [(file name, schedule string, timezone)]
+        self.flow_name, self.flow_path, self.root = flow_location(flow_dir)
 
     # -- reporting ---------------------------------------------------------
     def line_of(self, mid):
@@ -1060,10 +1119,11 @@ class Validator:
                               "`%s` is not in schema.properties.%s" % (name, suggest(str(name), props)))
 
     # -- pass 1 ------------------------------------------------------------
-    def register(self, mid, chain, kind, mtype):
+    def register(self, mid, chain, kind, mtype, module=None):
         self.seq_counter += 1
         if not isinstance(mid, str) or not mid:
             return
+        self.modules.setdefault(mid, module)
         place = " > ".join("%s%s" % (c, "[%s]" % b if b else "") for c, b, _ in chain) or "top level"
         if kind in ("failure", "preprocessor"):
             place = "value.%s_module" % kind
@@ -1079,7 +1139,7 @@ class Validator:
             v = m.get("value") if isinstance(m.get("value"), dict) else {}
             t = v.get("type")
             mid = m.get("id")
-            self.register(mid, chain, kind, t)
+            self.register(mid, chain, kind, t, m)
             if t in ("forloopflow", "whileloopflow"):
                 self.register_seq(v.get("modules"), chain + ((mid, "", t),))
             elif t in ("branchone", "branchall"):
@@ -1091,7 +1151,7 @@ class Validator:
             elif t == "aiagent":
                 for tool in v.get("tools") or []:
                     if isinstance(tool, dict):
-                        self.register(tool.get("id"), chain + ((mid, "tools", t),), "tool", None)
+                        self.register(tool.get("id"), chain + ((mid, "tools", t),), "tool", None, tool)
 
     # -- pass 2 ------------------------------------------------------------
     def walk_seq(self, modules, visible, ctx):
@@ -1171,6 +1231,19 @@ class Validator:
 
         self.check_value(value, mid, label, visible, ctx)
 
+        if "suspend" in m:
+            if vtype == "identity":
+                self.error("suspend", w, "`suspend` on an `identity` step: nothing creates the resume URLs, so "
+                           "nobody can approve and the flow waits until it times out.",
+                           "make it a rawscript that calls `await wmill.getResumeUrls(\"approver\")` and sends or returns the URLs")
+            elif vtype == "rawscript" and id(value) in self.resolved and not re.search(
+                    r"getResumeUrls|get_resume_urls|getResumeEndpoints", self.resolved[id(value)]):
+                self.error("suspend", w, "the step has `suspend` but its script never calls `getResumeUrls`, so "
+                           "nobody receives a link to approve and the flow waits until it times out.",
+                           "in the script: `const urls = await wmill.getResumeUrls(\"approver\")`, then send or return `urls`")
+            elif vtype in ("script", "flow"):
+                self.note("module `%s`: `suspend` on a `%s` step - cannot check that it obtains resume URLs." % (label, vtype))
+
     def check_value(self, value, mid, label, visible, ctx):
         w = self.where(label)
         vtype = value.get("type")
@@ -1210,6 +1283,19 @@ class Validator:
                            "use u/<user>/<name>, f/<folder>/<name> or hub/<id>/... (wmill flow push rejects other paths)")
             self.note("input_transforms of `script`/`flow` steps are not compared with the target's "
                       "parameters (the target lives in the workspace).")
+            if isinstance(path, str) and re.match(r"^(u|f|g)/", path) and self.root:
+                base = os.path.join(self.root, *path.split("/"))
+                if vtype == "flow":
+                    found = any(os.path.isdir(base + suffix) for suffix in (".flow", "__flow"))
+                else:
+                    folder, leaf = os.path.dirname(base), os.path.basename(base)
+                    found = os.path.isdir(folder) and any(
+                        f.startswith(leaf + ".") and not f.endswith((".flow", ".md")) for f in os.listdir(folder))
+                if not found:
+                    self.warn("path-missing", w, "calls %s `%s`, which is not in the output tree (%s)."
+                              % (vtype, path, self.root),
+                              "fine if it already exists in the workspace or is planned; it must exist before this "
+                              "flow runs, so list it under Setup in the notes")
         elif vtype in ("forloopflow", "whileloopflow"):
             if vtype == "forloopflow" and value.get("iterator") is not None:
                 self.check_transform(value["iterator"], mid, "iterator", visible, ctx)
@@ -1510,7 +1596,7 @@ class Validator:
             self.error("inline", w, "`!inline %s` cannot be read: %s" % (rel, exc))
             return None
 
-    def script_content(self, value, w):
+    def script_content(self, value, w, mid=None):
         content = value.get("content")
         if not isinstance(content, str):
             if content is not None:
@@ -1518,6 +1604,9 @@ class Validator:
                            "use a block scalar: `content: |` and indent the code under it")
             return None
         if content.startswith("!inline"):
+            parts = content.split(" ")
+            if len(parts) > 1 and mid:
+                self.inline_files.setdefault(parts[1].strip(), []).append(mid)
             return self.resolve_inline(content, w, "content")
         return content
 
@@ -1534,7 +1623,7 @@ class Validator:
             if self.flow_dir and not os.path.isfile(os.path.join(self.flow_dir, rel)):
                 self.warn("inline", w, "lock file `%s` not found (wmill treats it as empty)." % rel,
                           "remove the `lock:` line unless you have a lock file")
-        code = self.script_content(value, w)
+        code = self.script_content(value, w, mid)
         if code is None:
             return
         self.resolved[id(value)] = code
@@ -1796,6 +1885,11 @@ def coverage(v, story_path, flow_dir, map_arg, out, workflow=None):
             reason = target[7:].lstrip(" :-")
             if reason:
                 dropped.append("  dropped  %s - %s" % (desc, reason))
+                if a.get("effect"):
+                    v.warn("coverage", "Tines action %s" % desc, "is DROPPED but has an outside effect (%s). "
+                           "Reason given: \"%s\"." % (a["effect"], reason[:80]),
+                           "port it, or make the reason say why that effect is no longer needed, and list it "
+                           "under Not ported in the notes")
             else:
                 noreason.append(aid)
                 out.append("  NOREASON %s" % desc)
@@ -1839,6 +1933,326 @@ def coverage(v, story_path, flow_dir, map_arg, out, workflow=None):
     if extra:
         out.append("  flow modules no Tines action maps to (fine for glue/containers, check the rest): "
                    + ", ".join("%s%s" % (i, " (container)" if v.ids[i][0]["type"] in containers else "") for i in extra))
+    schedules_vs_story(v, story, ids)
+    flow_text = json.dumps(v.data, default=str) + "\n".join(v.resolved.values())
+    for aid in ids:
+        secret = story.actions[aid]["options"].get("secret") if story.actions[aid]["type"] == "webhook" else None
+        if isinstance(secret, str) and len(secret) >= 8 and secret in flow_text:
+            v.error("secret", "Tines action %s" % aid, "the webhook secret of this action is copied into the flow.",
+                    "remove it; Windmill webhooks authenticate with their own token")
+    return {"story": story, "ids": ids, "required": required, "entries": entries, "export": export}
+
+
+# ==========================================================================
+# Schedule files
+# ==========================================================================
+
+def six_field(cron):
+    fields = str(cron).split()
+    return " ".join(["0"] + fields) if len(fields) == 5 else " ".join(fields)
+
+
+def check_schedules(v, flow_dir, force_builtin=False):
+    """Check <flow>.schedule.yaml files next to the flow folder."""
+    if not flow_dir or not v.flow_name:
+        return
+    parent = os.path.dirname(os.path.abspath(flow_dir))
+    try:
+        names = sorted(f for f in os.listdir(parent) if re.search(r"\.schedule\.(yaml|yml)$", f))
+    except OSError:
+        return
+    for fname in names:
+        stem = re.sub(r"\.schedule\.(yaml|yml)$", "", fname)
+        where = "schedule file %s" % fname
+        try:
+            with open(os.path.join(parent, fname), encoding="utf-8") as fh:
+                data, _ = load_yaml(fh.read(), force_builtin)
+        except (OSError, UnicodeDecodeError, YamlError) as exc:
+            if stem == v.flow_name or stem.startswith(v.flow_name):
+                v.error("schedule", where, "cannot be read: %s%s." % (exc, " (line %s)" % exc.line if getattr(exc, "line", None) else ""))
+            continue
+        if not isinstance(data, dict):
+            continue
+        target = data.get("script_path")
+        named_for_flow = stem == v.flow_name or (
+            re.match(re.escape(v.flow_name) + r"[._-]", stem) is not None
+            and not any(os.path.isdir(os.path.join(parent, stem + sfx)) for sfx in (".flow", "__flow")))
+        other_flow = isinstance(target, str) and target != v.flow_path and any(
+            os.path.isdir(os.path.join(parent, target.split("/")[-1] + sfx)) for sfx in (".flow", "__flow")) \
+            and target.split("/")[-1] != v.flow_name
+        if not ((v.flow_path and target == v.flow_path) or (named_for_flow and not other_flow)):
+            continue
+        cron = data.get("schedule")
+        fields = cron.split() if isinstance(cron, str) else []
+        if not isinstance(cron, str) or not fields:
+            v.error("schedule", where, "`schedule` (the cron string) is missing.",
+                    "add `schedule: \"0 */15 * * * *\"` (6 fields, seconds first)")
+        elif len(fields) == 5:
+            v.error("schedule", where, "`schedule: \"%s\"` has 5 fields; Windmill cron has 6, with seconds "
+                    "first (a 5-field Tines cron would be misread)." % cron,
+                    "write `schedule: \"%s\"`" % six_field(cron))
+        elif len(fields) != 6:
+            v.error("schedule", where, "`schedule: \"%s\"` has %d fields; Windmill cron has exactly 6 "
+                    "(seconds minutes hours day-of-month month day-of-week)." % (cron, len(fields)))
+        if not isinstance(data.get("timezone"), str) or not data.get("timezone").strip():
+            v.error("schedule", where, "`timezone` is missing.",
+                    "add `timezone: <the timezone of the Tines schedule, e.g. Europe/Oslo>`")
+        if v.flow_path and target != v.flow_path:
+            v.error("schedule", where, "`script_path: %s` does not match this flow's path `%s`." % (target, v.flow_path),
+                    "set `script_path: %s`" % v.flow_path)
+        elif not isinstance(target, str):
+            v.error("schedule", where, "`script_path` is missing.", "set it to the flow's workspace path, e.g. f/<folder>/%s" % v.flow_name)
+        if data.get("is_flow") is not True:
+            v.error("schedule", where, "`is_flow: true` is missing%s; without it Windmill looks for a script at that path."
+                    % ("" if "is_flow" not in data else " (found %r)" % (data.get("is_flow"),)), "add `is_flow: true`")
+        v.schedules.append((fname, " ".join(fields), data.get("timezone")))
+
+
+def schedules_vs_story(v, story, ids):
+    """Every cron line of the workflow's entry actions needs a schedule file."""
+    wanted = []
+    for aid in ids:
+        a = story.actions[aid]
+        if a["group"] or a["disabled"]:
+            continue
+        for sch in a["schedule"]:
+            if isinstance(sch, dict) and sch.get("cron"):
+                wanted.append((aid, a, " ".join(str(sch["cron"]).split()), sch.get("timezone")))
+    have = {cron: (fname, tz) for fname, cron, tz in v.schedules}
+    example = "%s.schedule.yaml" % (v.flow_name or "<flow_name>")
+    for aid, a, cron, tz in wanted:
+        expected = six_field(cron)
+        if expected not in have:
+            v.error("schedule", "Tines action %s \"%s\"" % (aid, a["name"]),
+                    "runs on cron `%s`%s, but no schedule file next to the flow folder has `schedule: \"%s\"`."
+                    % (cron, " (%s)" % tz if tz else "", expected),
+                    "create %s with: schedule: \"%s\" / timezone: %s / script_path: %s / is_flow: true "
+                    "(one file per cron line; name further ones %s_2.schedule.yaml ...)"
+                    % (example, expected, tz or "<timezone>", v.flow_path or "f/<folder>/<flow_name>", v.flow_name))
+        elif tz and have[expected][1] and have[expected][1] != tz:
+            v.warn("schedule", "schedule file %s" % have[expected][0],
+                   "timezone `%s` differs from the Tines schedule of %s (`%s`)." % (have[expected][1], aid, tz),
+                   "set `timezone: %s` unless the change is deliberate" % tz)
+    known = {six_field(c) for _, _, c, _ in wanted}
+    for fname, cron, _ in v.schedules:
+        if cron and len(cron.split()) == 6 and cron not in known:
+            v.warn("schedule", "schedule file %s" % fname,
+                   "`schedule: \"%s\"` matches no enabled schedule of the ported workflow (story has: %s)."
+                   % (cron, ", ".join("`%s`" % six_field(c) for _, _, c, _ in wanted) or "none"),
+                   "remove the file or correct the cron, unless the user asked for this schedule")
+
+
+# ==========================================================================
+# Behaviour (--story): does each step plausibly do what its Tines actions did?
+# ==========================================================================
+
+LOOP_CODE = re.compile(r"\bfor\s*\(|\bwhile\s*\(|\.(?:map|forEach|filter|reduce|flatMap|some|every|find)\s*\(|"
+                       r"\bfor\s+\w+\s+in\b|Promise\.all")
+COND_CODE = re.compile(r"\bif\s*\(|\bswitch\s*\(|\s\?\s|\bif\s+[^\n]*:")
+UNBOUNDED = re.compile(r"\bwhile\s*\(\s*(?:true|1|!0)\s*\)|\bfor\s*\(\s*;\s*;\s*\)|\bwhile\s+True\s*:")
+BOUND_WORDS = re.compile(r"attempt|tries|retries|max|limit|deadline|Date\.now|remaining|budget|<=?\s*\d", re.I)
+URL_NOISE = {"http", "https", "api", "rest", "json", "www", "com", "org", "net", "true", "false",
+             "html", "page", "per_page", "limit", "offset", "format", "query", "search", "index"}
+TINES_API = re.compile(r"global_resources|/api/v\d+/(?:stories|actions|events|credentials|teams|records)\b")
+
+
+def _nested(module):
+    """The module and every module nested inside it."""
+    out = [module]
+    v = module.get("value") if isinstance(module.get("value"), dict) else {}
+    lists = [v.get("modules"), v.get("default")]
+    lists += [b.get("modules") for b in v.get("branches") or [] if isinstance(b, dict)]
+    for lst in lists:
+        for m in lst or []:
+            if isinstance(m, dict):
+                out.extend(_nested(m))
+    return out
+
+
+def behaviour(v, cov, flow_dir):
+    """Heuristic WARN lines; every check is tuned to stay silent on a faithful port."""
+    story, entries, required = cov["story"], cov["entries"], cov["required"]
+    acts = story.actions
+    lines = []
+
+    def warn(check, where, msg, fix):
+        lines.append("WARN  [behaviour:%s] %s: %s Fix: %s" % (check, where, msg, fix))
+
+    info_cache = {}
+
+    def info(mid):
+        if mid not in info_cache:
+            mods = _nested(v.modules.get(mid) or {})
+            chain = v.ids[mid][0]["chain"] if mid in v.ids else ()
+            texts, types = [], set()
+            for m in mods:
+                val = m.get("value") if isinstance(m.get("value"), dict) else {}
+                types.add(val.get("type"))
+                texts.append(v.resolved.get(id(val), ""))
+                texts.append(json.dumps({k: x for k, x in m.items() if k != "value"}, default=str))
+                texts.append(json.dumps({k: x for k, x in val.items()
+                                         if k not in ("modules", "branches", "default", "content")}, default=str))
+            info_cache[mid] = {
+                "types": types, "text": "\n".join(texts),
+                "code": "\n".join(v.resolved.get(id(m.get("value")), "") for m in mods if isinstance(m.get("value"), dict)),
+                "in_loop": any("loop" in (t or "") for _, _, t in chain),
+                "in_branch": any(t == "branchone" for _, _, t in chain),
+                "cond": any(k in m for m in mods for k in ("skip_if", "stop_after_if")),
+                "retry": any("retry" in m for m in mods),
+            }
+        return info_cache[mid]
+
+    def targets(aid):
+        """(module ids, raw target) an action is mapped to; None when unmapped or dropped."""
+        if aid not in entries:
+            return None
+        target = entries[aid][0]
+        if not target or re.match(r"^(DROPPED|TODO)\b", target, re.I):
+            return None
+        parts = [t.strip() for t in re.split(r"[,\s]+", target) if t.strip()]
+        return [t for t in parts if t in v.modules], target
+
+    def label(aid):
+        return "Tines action %s \"%s\" [%s]" % (aid, acts[aid]["name"], acts[aid]["type"])
+
+    mapped = {}
+    for aid in required:
+        t = targets(aid)
+        if t is not None:
+            mapped[aid] = t
+
+    used_names = {}
+    for aid, (mods, target) in mapped.items():
+        a = acts[aid]
+        text = "\n".join(info(m)["text"] for m in mods)
+        code = "\n".join(info(m)["code"] for m in mods)
+        types = set().union(*[info(m)["types"] for m in mods]) if mods else set()
+        step = ", ".join("`%s`" % m for m in mods) or target
+        url = a["options"].get("url") if isinstance(a["options"].get("url"), str) else ""
+        headers = a["options"].get("headers") if isinstance(a["options"].get("headers"), dict) else {}
+        # calls to the Tines API itself (resource writes etc.) are replaced, not ported: x-user-token is its auth header
+        calls_tines_api = a["type"] == "http_request" and (
+            bool(TINES_API.search(url)) or any(str(k).lower() == "x-user-token" for k in headers))
+        if not calls_tines_api:
+            for g in a["globals"]:
+                if g.startswith(("CREDENTIAL.", "RESOURCE.")):
+                    used_names.setdefault(g, []).append(aid)
+
+        # an effect must land in something that can act
+        if a["effect"] and not (types & {"rawscript", "script", "flow", "aiagent"}):
+            warn("effect", label(aid), "has an outside effect (%s) but is mapped to %s, which runs no script or "
+                 "subflow." % (a["effect"], step),
+                 "map it to the step that performs the effect, or write that step")
+            continue
+        if a["type"] == "http_request" and not calls_tines_api and "rawscript" in types:
+            static = DYNAMIC_PART.sub(" ", url)
+            host = re.match(r"^\s*https?://([A-Za-z0-9.-]+\.[A-Za-z]{2,})", url)
+            words = {w for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}", re.sub(r"^\s*https?://[^/\s]*", " ", static))
+                     if w.lower() not in URL_NOISE}
+            if host:
+                words.add(host.group(1))
+            low = text.lower()
+            if words and not any(w.lower() in low for w in words):
+                warn("http", label(aid), "is mapped to %s, but no script there mentions this request's host or path "
+                     "(%s)." % (step, ", ".join(sorted(words))[:120]),
+                     "check the map line and that the step really makes this request")
+            method = a["options"].get("method")
+            if isinstance(method, str) and method.strip().lower() not in ("", "get") and not method.startswith(("=", "<")):
+                if not re.search(r"[\"'`]%s[\"'`]" % re.escape(method.strip()), text, re.I):
+                    warn("http", label(aid), "is a %s request, but %s contains no \"%s\" (fetch defaults to GET)."
+                         % (method.upper(), step, method.upper()),
+                         "pass `method: \"%s\"` in the request that ports this action" % method.upper())
+        elif a["type"] == "send_email" and not re.search(r"mail|smtp", text, re.I):
+            warn("email", label(aid), "is mapped to %s, which does not appear to send mail." % step,
+                 "send it there (nodemailer with an smtp resource), or correct the map line")
+        elif a["type"] == "send_to_story" and "flow" not in types and "MISSING" not in text:
+            warn("story-call", label(aid), "calls a story, but %s contains no `type: flow` step and no MISSING stub." % step,
+                 "call the ported (or planned) flow with `type: flow`, or throw a MISSING error if the story is not in the export")
+
+        # if / else
+        if a["type"] == "trigger":
+            sides = [r for r, _ in a["out"]]
+            if any(k == "no-match" for _, k in a["out"]) and len(sides) > 1 and all(r in mapped for r in sides):
+                around = mods + [m for r in sides for m in mapped[r][0]]
+                if not any(info(m)["in_branch"] or info(m)["cond"] or "branchone" in info(m)["types"]
+                           or COND_CODE.search(info(m)["code"]) for m in around):
+                    warn("branch", label(aid), "has a match link and a no-match link, both mapped, but neither its "
+                         "step nor theirs contains a branchone, skip_if or an if.",
+                         "port the condition: a `branchone`, or an if/else in the script")
+        # loops
+        loop_opt = a["options"].get("loop")
+        if a["mode"] == "explode" or loop_opt not in (None, False, "", "false"):
+            if mods and not any(info(m)["in_loop"] or info(m)["types"] & {"forloopflow", "whileloopflow"}
+                                or LOOP_CODE.search(info(m)["code"]) for m in mods):
+                warn("loop", label(aid), "produces one event per item (%s), but %s is not a loop, is not inside one "
+                     "and its script has no loop." % ("explode" if a["mode"] == "explode" else "loop option", step),
+                     "use a `forloopflow`, or iterate over the items in the script")
+
+    # retry / poll cycles
+    by_scope = {}
+    for aid in mapped:
+        if acts[aid]["in_cycle"]:
+            by_scope.setdefault(acts[aid]["group"], []).append(aid)
+    for scope, aids in by_scope.items():
+        mods = sorted({m for aid in aids for m in mapped[aid][0]})
+        if mods and not any(info(m)["retry"] or "whileloopflow" in info(m)["types"]
+                            or re.search(r"\bfor\s*\(|\bwhile\s*\(|\bwhile\s|retry", info(m)["code"]) for m in mods):
+            warn("cycle", "Tines actions %s" % ", ".join(aids), "form a retry/poll loop in the story, but %s has no "
+                 "`retry`, no whileloopflow and no loop in its script." % ", ".join("`%s`" % m for m in mods),
+                 "add a bounded retry (step `retry`, or a for loop with a maximum)")
+    for mid in sorted(v.modules):
+        val = (v.modules[mid] or {}).get("value")
+        code = v.resolved.get(id(val), "") if isinstance(val, dict) else ""
+        m = UNBOUNDED.search(strip_comments(code, val.get("language") if isinstance(val, dict) else None)) if code else None
+        if m and not BOUND_WORDS.search(code):
+            warn("unbounded-loop", "module `%s`" % mid, "`%s` with no visible bound (no attempt counter, maximum or deadline)."
+                 % " ".join(m.group(0).split()), "bound it: `for (let attempt = 0; attempt < MAX; attempt++)`")
+
+    # one step copied per incoming link
+    for fname, mids in sorted(v.inline_files.items()):
+        if len(set(mids)) > 1:
+            warn("duplicate-step", "modules %s" % ", ".join("`%s`" % m for m in sorted(set(mids))),
+                 "all run the same file `%s`." % fname,
+                 "write the shared work once, after the branch that differs (a branchone followed by one step)")
+    scripts = [(mid, re.sub(r"\s+", " ", v.resolved.get(id((mod or {}).get("value")), "")))
+               for mid, mod in sorted(v.modules.items()) if isinstance((mod or {}).get("value"), dict)]
+    scripts = [(mid, code) for mid, code in scripts if len(code) > 300]
+    for k, (m1, c1) in enumerate(scripts):
+        for m2, c2 in scripts[k + 1:]:
+            if set(v.inline_files.get(next((f for f, ms in v.inline_files.items() if m1 in ms), ""), [])) >= {m1, m2}:
+                continue
+            sm = difflib.SequenceMatcher(None, c1, c2, autojunk=False)
+            if sm.real_quick_ratio() > 0.9 and sm.quick_ratio() > 0.9 and sm.ratio() > 0.9:
+                warn("duplicate-step", "modules `%s` and `%s`" % (m1, m2), "have near-identical scripts (%d%% the same)."
+                     % int(sm.ratio() * 100),
+                     "write the shared work once, after the branch that differs, or pass the difference as an input")
+
+    # credentials and resources
+    haystack = [json.dumps(v.data, default=str)] + list(v.resolved.values())
+    if flow_dir and os.path.isdir(flow_dir):
+        parent = os.path.dirname(os.path.abspath(flow_dir))
+        for folder, pattern in ((parent, r"\.(schedule|http_trigger|resource|variable)\.ya?ml$"),):
+            for f in os.listdir(folder):
+                if re.search(pattern, f) and f.startswith(v.flow_name or "\0"):
+                    try:
+                        with open(os.path.join(folder, f), encoding="utf-8") as fh:
+                            haystack.append(fh.read())
+                    except (OSError, UnicodeDecodeError):
+                        pass
+    haystack = "\n".join(haystack)
+    found, absent = [], []
+    for name in sorted(used_names):
+        (found if name.split(".", 1)[1] in haystack else absent).append(name)
+    for name in absent:
+        users = used_names[name]
+        warn("setup", name, "is used by mapped action(s) %s, but `%s` appears nowhere in the flow." % (
+            ", ".join(users[:6]) + (" ..." if len(users) > 6 else ""), name.split(".", 1)[1]),
+             "read it from a variable or resource whose path ends in `%s` (keep the Tines name), or explain in the "
+             "notes why it is not needed" % name.split(".", 1)[1])
+    if found:
+        lines.append("  setup names found in the flow (each needs a Windmill variable or resource; list them "
+                     "under Setup in the notes): " + ", ".join(found))
+    return lines
 
 
 # ==========================================================================
@@ -1911,18 +2325,34 @@ def main(argv=None):
               "reported as parse errors; all checks otherwise run as usual.")
     v = Validator(data, flow_dir, None if loader == "JSON" else text)
     v.run()
-    extra = []
+    check_schedules(v, flow_dir, args.builtin_yaml)
+    extra, behaviour_lines, cov = [], [], None
     if args.story:
-        coverage(v, args.story, flow_dir, args.map, extra, args.workflow)
+        cov = coverage(v, args.story, flow_dir, args.map, extra, args.workflow)
+        if cov:
+            behaviour_lines = behaviour(v, cov, flow_dir)
     for line in v.errors + v.warnings + v.notes + extra:
         print(line)
+    n_behaviour = sum(1 for line in behaviour_lines if line.startswith("WARN"))
+    if args.story and cov:
+        print("")
+        print("BEHAVIOUR (heuristic comparison of each mapped step with its Tines actions: %s)"
+              % ("%d warning(s) - read each one" % n_behaviour if n_behaviour else "nothing suspicious found"))
+        for line in behaviour_lines:
+            print(line)
     n_mod = sum(1 for recs in v.ids.values() for r in recs if r["kind"] != "tool")
-    failed = bool(v.errors) or (args.strict and bool(v.warnings))
+    failed = bool(v.errors) or (args.strict and bool(v.warnings or n_behaviour))
     print("")
-    print("RESULT: %s - %d error(s), %d warning(s), %d module(s) checked%s" % (
-        "FAIL" if failed else "OK", len(v.errors), len(v.warnings), n_mod,
-        "" if failed else " (structure and references only: this does not prove the flow runs "
-        "or reproduces the story's logic)"))
+    if failed:
+        tail = ""
+    elif n_behaviour:
+        tail = " - REVIEW the behaviour warnings: fix each, or explain it in the notes file"
+    else:
+        tail = (" (structure and references only: this does not prove the flow runs or reproduces "
+                "the story's logic)")
+    print("RESULT: %s - %d error(s), %d warning(s), %s%d module(s) checked%s" % (
+        "FAIL" if failed else "OK", len(v.errors), len(v.warnings),
+        "%d behaviour warning(s), " % n_behaviour if args.story else "", n_mod, tail))
     return 1 if failed else 0
 
 

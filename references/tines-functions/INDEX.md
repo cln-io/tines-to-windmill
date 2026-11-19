@@ -1,0 +1,257 @@
+# Tines formula functions: index
+
+This catalogue is an independent, unofficial description of the Tines formula functions, written to help port Tines stories to TypeScript. It is not Tines documentation and is not endorsed by Tines.
+The Tines documentation is the authority: every entry links to the function's page there, and where the two differ the Tines page wins.
+All examples are illustrative: they were written for this catalogue. Stated outputs were checked by running the entry's TypeScript equivalent; the few examples that could not be run say so.
+
+227 functions, one line each, alphabetical. Format: `NAME — signature — Tines categories — summary — file`.
+Full entry for a function: `python3 scripts/tines_fn.py NAME` (also `--list [category]`, `--search WORD`), or open the file named on its line.
+
+## Conventions used in every entry
+
+- Each entry gives the signature, arguments, return value, porting semantics, examples, and a TypeScript equivalent with notes. Equivalents marked APPROXIMATE cannot be exact; the reason is given.
+- "Not specified in docs" means the Tines page is silent on that behaviour. Do not guess: keep the port conservative and flag it.
+- Truthiness: every value is truthy except `FALSE` and `NULL`. `0`, `""`, `[]`, `{}` are truthy. JS truthiness differs, so use `const truthy = (v) => v !== false && v != null`.
+- Blank (IS_BLANK / IS_PRESENT / DEFAULT): `FALSE`, `""`, `[]`, `{}`, `NULL`. Numbers, including `0`, are not blank.
+- A reference to a key that does not exist evaluates to `NULL`.
+- Indexes are 0-based.
+- Keyword arguments are written `name: value` in formulas (e.g. `strict: FALSE`); in TypeScript they become extra parameters or an options object.
+- `IF`, `AND`, `OR` evaluate their arguments lazily; all other functions evaluate arguments eagerly.
+- Formulas never modify their inputs: write non-mutating TypeScript (copy before `sort`, `reverse`, `splice`, `delete`).
+- Operators: `=` equality, `!=`, `>`, `>=`, `<`, `<=`, `&&`/`AND`, `||`/`OR`, `*`, `/`, `+`, `-`, `&` (text concatenation), `|>` (pipe; `%` is the left-hand result).
+
+## Names that are not documented functions
+
+- DAYS — seen in one Tines docs example but it has no page in the functions reference, so its behaviour is not specified in docs. Assumption used across this skill: `DAYS(n)` is `n * 86400` seconds. Flag it in the port notes.
+- COUNT — not in the functions reference; behaviour not specified in docs. Assumption used across this skill: treat `COUNT(x)` as `SIZE(x)`. Flag it in the port notes.
+- CREDENTIAL, RESOURCE, LOCAL, INPUT, META — data references (`CREDENTIAL.name`), not functions; see the story-format reference.
+
+## Functions
+
+- ABS — `ABS(number)` — Numbers — absolute value of a number — numbers-1.md
+- ACOS — `ACOS(x)` — Numbers — arc cosine in radians — numbers-1.md
+- AES_DECRYPT — `AES_DECRYPT(encoded_text, key, [iv])` — Encryption — DEPRECATED - decrypt AES-256-CBC text — encryption-1.md
+- AES_ENCRYPT — `AES_ENCRYPT(text, key, [iv], [mode: "aead"], [expires_in])` — Encryption — DEPRECATED - encrypt text with AES — encryption-1.md
+- AND — `AND(value1, value2, ...)` — Logic — true only when every argument is truthy — logic.md
+- APPEND — `APPEND(text1, text2, ...)` — Text — concatenate text values — text-1.md
+- ARRAY — `ARRAY(element1, element2, ...)` — Arrays — build an array from the arguments — arrays-1.md
+- ASIN — `ASIN(x)` — Numbers — arc sine in radians — numbers-1.md
+- AT_LEAST — `AT_LEAST(number, minimum)` — Numbers — limit a number to a minimum — numbers-1.md
+- AT_MOST — `AT_MOST(number, maximum)` — Numbers — limit a number to a maximum — numbers-1.md
+- AVERAGE — `AVERAGE(array) or AVERAGE(number1, number2, ...)` — Numbers — mean of an array or of the arguments — numbers-1.md
+- BASE64URL_DECODE — `BASE64URL_DECODE(text)` — Data Parsing/Conversion — decode URL-safe Base64 text — data-parsing-conversion-1.md
+- BASE64URL_ENCODE — `BASE64URL_ENCODE(text)` — Data Parsing/Conversion — encode text as URL-safe Base64 — data-parsing-conversion-1.md
+- BASE64_DECODE — `BASE64_DECODE(text, [strict: TRUE])` — Data Parsing/Conversion — decode Base64 text — data-parsing-conversion-1.md
+- BASE64_ENCODE — `BASE64_ENCODE(text_or_object, [strict: TRUE])` — Data Parsing/Conversion — Base64-encode text, or the JSON of an object — data-parsing-conversion-1.md
+- BYTESIZE — `BYTESIZE(string)` — Text — length of text in bytes — text-1.md
+- CAMELIZE — `CAMELIZE(text)` — Text — convert text to camelCase — text-1.md
+- CAPITALIZE — `CAPITALIZE(text)` — Text — uppercase first character, lowercase the rest — text-1.md
+- CEIL — `CEIL(number)` — Numbers — round up to a whole number — numbers-1.md
+- CHUNK_ARRAY — `CHUNK_ARRAY(array, chunk_size)` — Arrays — split an array into chunks of a given size — arrays-1.md
+- CLAMP — `CLAMP(input, min, max)` — Numbers, Text — restrict a value to a min..max range — numbers-1.md
+- COMBINE_COLUMNS_AND_ROWS — `COMBINE_COLUMNS_AND_ROWS(columns, rows)` — Data Parsing/Conversion — zip column names and row arrays into objects — data-parsing-conversion-1.md
+- COMPACT — `COMPACT(array)` — Arrays — remove null values from an array — arrays-1.md
+- CONCAT — `CONCAT(array1, array2, ...)` — Arrays — concatenate arrays — arrays-1.md
+- CONST_EQUALS — `CONST_EQUALS(string1, string2)` — Text — compare two values in constant time — text-1.md
+- CONTAINS_URL — `CONTAINS_URL(text)` — Text — true if text contains a URL — text-1.md
+- COS — `COS(x)` — Numbers — cosine of an angle in radians — numbers-1.md
+- COUNTIF — `COUNTIF(array, comparison)` — Arrays, Lambdas — count elements equal to a value or accepted by a lambda — arrays-1.md
+- CSV_PARSE — `CSV_PARSE(text)` — Data Parsing/Conversion — parse CSV text into an array of arrays — data-parsing-conversion-1.md
+- CSV_PARSE_TO_OBJECTS — `CSV_PARSE_TO_OBJECTS(text)` — Data Parsing/Conversion — parse CSV text into an array of objects keyed by header — data-parsing-conversion-1.md
+- DATE — `DATE(date, format, timezone)` — Dates/Times — format a date as text (strftime) — dates-times-1.md
+- DATE_DIFF — `DATE_DIFF(start_time, end_time, [absolute: TRUE])` — Dates/Times — difference between two times as an object — dates-times-1.md
+- DATE_PARSE — `DATE_PARSE(date, format, timezone)` — Dates/Times — parse a date into an object of fields — dates-times-1.md
+- DAY — `DAY(date)` — Dates/Times — day of the month of a date — dates-times-1.md
+- DEEP_MERGE — `DEEP_MERGE(object, object, ...)` — Objects — recursively merge two or more objects — objects-1.md
+- DEFAULT — `DEFAULT(value, fallback1, fallback2, ..., [{use_last_fallback: FALSE}])` — Logic, Arrays, Text — first value that is not blank — logic.md
+- DELETE — `DELETE(array, index)` — Arrays — remove the item at an index from an array — arrays-1.md
+- DIFFERENCE — `DIFFERENCE(array1, array2)` — Arrays — items in the first array that are not in the second — arrays-1.md
+- DISTANCE_OF_TIME_IN_WORDS — `DISTANCE_OF_TIME_IN_WORDS(date, [from])` — Dates/Times — human-readable distance between two times — dates-times-1.md
+- DIVIDED_BY — `DIVIDED_BY(number, denominator)` — Numbers — divide a number by another (floors when the divisor is whole) — numbers-2.md
+- DOWNCASE — `DOWNCASE(text)` — Text — lowercase text — text-1.md
+- EML_PARSE — `EML_PARSE(text, [single_body: TRUE])` — Data Parsing/Conversion — parse EML (RFC822) email text into an object — data-parsing-conversion-1.md
+- ENDS_WITH — `ENDS_WITH(text, suffix)` — Text — true if text ends with a suffix — text-1.md
+- ERROR — `ERROR(message)` — Logic — raise an error with a message — logic.md
+- ESCAPE — `ESCAPE(text)` — Text — HTML-escape text (entities) — text-1.md
+- ESCAPE_ONCE — `ESCAPE_ONCE(text)` — Text — HTML-escape text without double-escaping existing entities — text-1.md
+- ESTIMATED_TOKEN_COUNT — `ESTIMATED_TOKEN_COUNT(input)` — Text, Objects, Arrays, Numbers — estimate LLM token count of the input — text-2.md
+- FILTER — `FILTER(array | object, values_to_keep | LAMBDA(arg1, [arg2], expr))` — Lambdas, Arrays, Objects — keep array/object items matching a lambda or value list — lambdas.md
+- FIND — `FIND(array, LAMBDA(item, [expr]))` — Lambdas, Arrays — first array element for which a lambda is true — lambdas.md
+- FIRST — `FIRST(array)` — Arrays — first element of an array — arrays-1.md
+- FLATTEN — `FLATTEN(array)` — Arrays — flatten nested arrays into one array — arrays-1.md
+- FLATTEN_JSON — `FLATTEN_JSON(object, [separator])` — Objects — flatten nested data to one level of dotted keys — objects-1.md
+- FLOOR — `FLOOR(number)` — Numbers — round down to a whole number — numbers-2.md
+- FORCE_ARRAY — `FORCE_ARRAY(anything)` — Text — wrap a value in an array unless it already is one — text-2.md
+- GENERATE_RSA_KEYS — `GENERATE_RSA_KEYS()` — Encryption — generate an RSA public/private key pair — encryption-1.md
+- GET — `GET(object, path)` — Objects — read a value from an object by key or dotted path — objects-1.md
+- GROUP_BY — `GROUP_BY(items, key_or_lambda, [as_array: FALSE])` — Arrays — group array items by a field or by a lambda result — arrays-1.md
+- GUNZIP — `GUNZIP(compressed_file_data)` — Data Parsing/Conversion — decompress gzip data — data-parsing-conversion-1.md
+- GZIP — `GZIP(file_contents)` — Data Parsing/Conversion — gzip-compress text — data-parsing-conversion-2.md
+- HCL_PARSE — `HCL_PARSE(hcl_text)` — Data Parsing/Conversion — parse HashiCorp Configuration Language text — data-parsing-conversion-2.md
+- HEX_PARSE — `HEX_PARSE(hex_text, [error_on_invalid_hex: FALSE])` — Data Parsing/Conversion — convert hexadecimal text to the text/data it represents — data-parsing-conversion-2.md
+- HMAC_SHA1 — `HMAC_SHA1(text, secret)` — Hashing/Signing — hex HMAC-SHA1 of text — hashing-signing-1.md
+- HMAC_SHA1_BASE64 — `HMAC_SHA1_BASE64(text, secret)` — Hashing/Signing — Base64 HMAC-SHA1 of text — hashing-signing-1.md
+- HMAC_SHA256 — `HMAC_SHA256(text, secret)` — Hashing/Signing — hex HMAC-SHA256 of text — hashing-signing-1.md
+- HMAC_SHA256_BASE64 — `HMAC_SHA256_BASE64(text, secret)` — Hashing/Signing — Base64 HMAC-SHA256 of text — hashing-signing-1.md
+- HOUR — `HOUR(date)` — Dates/Times — hour of the day of a date — dates-times-1.md
+- HTML_DECODE — `HTML_DECODE(text)` — Text — convert HTML entities back to characters — text-2.md
+- HTML_ENCODE — `HTML_ENCODE(text)` — Text — escape HTML syntax characters — text-2.md
+- IF — `IF(condition, value_if_true, [value_if_false])` — Logic — conditional: second argument if condition is true, else third — logic.md
+- IF_ERROR — `IF_ERROR(expression, fallback_expression)` — Logic — return a fallback if an expression errors — logic.md
+- INCLUDES — `INCLUDES(target, value)` — Text, Objects, Arrays — true if text/array/object includes a value — text-2.md
+- INDEX_OF — `INDEX_OF(string_or_array, object | LAMBDA(value, expr))` — Arrays, Text — index of a term in text or an array (null if absent) — arrays-2.md
+- INSERT — `INSERT(array, index, item)` — Arrays — add an element to an array at a chosen position — arrays-2.md
+- INTERSECTION — `INTERSECTION(array1, array2)` — Arrays — items common to two arrays — arrays-2.md
+- IN_CIDR — `IN_CIDR(ip_address, cidr_range)` — IP Addresses — check whether IP address(es) are in a CIDR block — ip-addresses.md
+- IS_BLANK — `IS_BLANK(any)` — Text, Objects, Arrays, Logic, Numbers — true for FALSE, "", [], {}, NULL — text-2.md
+- IS_EMAIL — `IS_EMAIL(text)` — Text — check that text looks like an email address — text-2.md
+- IS_EMPTY — `IS_EMPTY(text | array | object)` — Text, Objects, Arrays — true for "", [], {} — text-2.md
+- IS_IPV4 — `IS_IPV4(text)` — IP Addresses, Text — check that text is a valid IPv4 address — ip-addresses.md
+- IS_IPV6 — `IS_IPV6(text)` — IP Addresses, Text — check that text is a valid IPv6 address — ip-addresses.md
+- IS_IP_ADDRESS — `IS_IP_ADDRESS(text, [strict: FALSE])` — IP Addresses — check that text is a valid IP address — ip-addresses.md
+- IS_JSON — `IS_JSON(text)` — Text — check that text is valid JSON — text-2.md
+- IS_PRESENT — `IS_PRESENT(any)` — Text, Objects, Arrays, Logic, Numbers — opposite of IS_BLANK — text-3.md
+- IS_URL — `IS_URL(text, [strict: FALSE])` — Text — check that text looks like a URL — text-3.md
+- IS_VALID_JSON_SCHEMA — `IS_VALID_JSON_SCHEMA(schema, value)` — Objects — true if a value matches a JSON schema — objects-1.md
+- IS_XML — `IS_XML(text)` — Text — check that text is valid XML — text-3.md
+- IS_YAML — `IS_YAML(text, [parse_date_or_time: FALSE], [strict: FALSE])` — Text — check that text is valid YAML — text-3.md
+- JOIN — `JOIN(array, join_text)` — Arrays — join array elements into text with a separator — arrays-2.md
+- JSONPATH — `JSONPATH(object, path)` — Objects — evaluate a JSONPath expression against data — objects-1.md
+- JSON_PARSE — `JSON_PARSE(text)` — Data Parsing/Conversion — parse JSON text into data — data-parsing-conversion-2.md
+- JSON_SCHEMA_VALIDATE — `JSON_SCHEMA_VALIDATE(schema, value)` — Objects — validation error message for a value against a JSON schema — objects-1.md
+- JWK_TO_PEM — `JWK_TO_PEM(jwk, [include_private: FALSE])` — Data Parsing/Conversion — convert a JSON Web Key to PEM — data-parsing-conversion-2.md
+- JWT_DECODE — `JWT_DECODE(token, secret_or_key, algorithm, **options)` — Hashing/Signing — decode and optionally verify a JWT — hashing-signing-1.md
+- JWT_SIGN — `JWT_SIGN(claim_set, key, [algorithm=RS256], [headers])` — Hashing/Signing — create a signed JSON Web Token — hashing-signing-1.md
+- KEYS — `KEYS(object)` — Objects — array of an object's keys — objects-1.md
+- LAMBDA — `LAMBDA([parameter1, parameter2, …,] calculation)` — Lambdas — define an anonymous function — lambdas.md
+- LAST — `LAST(array)` — Arrays — last element of an array — arrays-2.md
+- LAST_INDEX_OF — `LAST_INDEX_OF(string_or_array, term)` — Arrays, Text — last index of a term in text or an array — arrays-2.md
+- LDIF_PARSE — `LDIF_PARSE(ldif_file_text)` — Data Parsing/Conversion — parse LDIF text into an array of entry objects — data-parsing-conversion-2.md
+- LEGACY_STRINGIFY — `LEGACY_STRINGIFY(object)` — Text — object to legacy {"key"=>"value"} text — text-3.md
+- LEVENSHTEIN_DISTANCE — `LEVENSHTEIN_DISTANCE(string_one, string_two, [insertion_cost: 2], [deletion_cost: 2], [substitution_cost: 1])` — Text — weighted Levenshtein edit distance between two strings — text-3.md
+- LSTRIP — `LSTRIP(text)` — Text — remove leading whitespace — text-3.md
+- MAP — `MAP(array_of_objects, path)` — Arrays — pluck the value at a key/path from each object in an array — arrays-2.md
+- MAP_LAMBDA — `MAP_LAMBDA(array_or_object, lambda)` — Lambdas — map each array element or object entry through a lambda — lambdas.md
+- MATCH — `MATCH(text, regex_to_match,  [modifiers])` — Text — true if text matches a regex — text-3.md
+- MAX — `MAX(array) or MAX(number1, number2, ...)` — Numbers — highest numeric value of an array or of the arguments — numbers-2.md
+- MD5 — `MD5(text)` — Hashing/Signing — hex MD5 hash of text — hashing-signing-1.md
+- MD5_BASE64 — `MD5_BASE64(text)` — Hashing/Signing — Base64 MD5 hash of text — hashing-signing-1.md
+- MEDIAN — `MEDIAN(array) or MEDIAN(number1, number2, ...)` — Numbers — median of an array or of the arguments — numbers-2.md
+- MERGE — `MERGE(object, object, ...)` — Objects — shallow-merge two or more objects — objects-1.md
+- MIME_HEADER_DECODE — `MIME_HEADER_DECODE(encoded_string, target_encoding = "utf-8")` — Data Parsing/Conversion — decode RFC 2047 encoded email header text — data-parsing-conversion-2.md
+- MIN — `MIN(array) or MIN(number1, number2, ...)` — Numbers — lowest numeric value of an array or of the arguments — numbers-2.md
+- MINUS — `MINUS(number, number)` — Numbers — subtract one number from another — numbers-2.md
+- MINUTE — `MINUTE(date)` — Dates/Times — minute of the hour of a date — dates-times-1.md
+- MODULO — `MODULO(numerator, denominator)` — Numbers — remainder of a division — numbers-2.md
+- MONTH — `MONTH(date)` — Dates/Times — month of the year of a date — dates-times-2.md
+- MSG_PARSE — `MSG_PARSE(file, [extract_multiline_headers: FALSE], [single_body: TRUE])` — Data Parsing/Conversion — parse an Outlook .msg file into an object — data-parsing-conversion-2.md
+- NEAT_JSON — `NEAT_JSON(object)` — Data Parsing/Conversion — pretty-print an object as JSON text — data-parsing-conversion-2.md
+- NEWLINE_TO_BR — `NEWLINE_TO_BR(text)` — Text — insert an HTML line break before each newline — text-3.md
+- NOT — `NOT(any)` — Logic — logical opposite of a value — logic.md
+- NOW — `NOW()` — Dates/Times — current UTC date-time as ISO 8601 text — dates-times-2.md
+- NUMBER — `NUMBER(value)` — Numbers — convert a value to a number — numbers-2.md
+- OBJECT — `OBJECT(key1, value1, key2, value2, ...)` — Objects — build an object from key/value arguments — objects-1.md
+- OBJECTS_TO_CSV — `OBJECTS_TO_CSV(objects, headers)` — Data Parsing/Conversion — array of objects to CSV text — data-parsing-conversion-3.md
+- OBJECTS_TO_MARKDOWN_TABLE — `OBJECTS_TO_MARKDOWN_TABLE(objects, headers)` — Data Parsing/Conversion — array of objects to a markdown table — data-parsing-conversion-3.md
+- OPENSSL_DECRYPT — `OPENSSL_DECRYPT(ciphertext, algorithm, key, iv, [aad], [auth_tag])` — Encryption — decrypt data with OpenSSL (AES CBC/GCM/ECB) — encryption-1.md
+- OPENSSL_ENCRYPT — `OPENSSL_ENCRYPT(text, algorithm, key, [aad])` — Encryption — encrypt text with OpenSSL (AES CBC/GCM/ECB) — encryption-1.md
+- OR — `OR(value1, value2, ...)` — Logic — true if any argument is truthy — logic.md
+- PAD_LEFT — `PAD_LEFT(input, target_length, pad_value)` — Text — left-pad text to a target length — text-4.md
+- PAD_RIGHT — `PAD_RIGHT(input, target_length, pad_value)` — Text — right-pad text to a target length — text-4.md
+- PARSE_URL — `PARSE_URL(text, [include_public_suffix_domains: FALSE])` — Data Parsing/Conversion — parse a URL into its components — data-parsing-conversion-3.md
+- PEM_TO_JWK — `PEM_TO_JWK(pem, [include_private: FALSE])` — Data Parsing/Conversion — convert a PEM key or certificate to a JSON Web Key — data-parsing-conversion-3.md
+- PLURALIZE — `PLURALIZE(counter, text, [plural_text])` — Text — singular or plural form of a word based on a count — text-4.md
+- PLUS — `PLUS(number, number)` — Numbers — add two numbers — numbers-2.md
+- POWER — `POWER(base, exponent)` — Numbers — raise a number to a power — numbers-3.md
+- PREPEND — `PREPEND(text, prefix)` — Text — add text to the beginning of other text — text-4.md
+- PROMPT — `PROMPT("text")` — Story Metadata — URL that resumes the current action with a new event when opened — story-metadata.md
+- PUSH — `PUSH(array, item1, ...)` — Arrays — append one or more items to an array — arrays-2.md
+- RANDOM — `RANDOM(min, max)` — Numbers — random number within a range — numbers-3.md
+- RANDOM_ELEMENT — `RANDOM_ELEMENT(array)` — Arrays — pick a random element of an array — arrays-2.md
+- RANDOM_STRING — `RANDOM_STRING(length, mode, custom_characters)` — Text — random string of a given length and character set — text-4.md
+- RANGE — `RANGE(start, end)` — Arrays — array of numbers from start to end inclusive — arrays-3.md
+- REDUCE — `REDUCE(array, LAMBDA(previous_value, current_value, [expr]), initial_value)` — Lambdas — fold an array into one value with a lambda — lambdas.md
+- REGEX_EXTRACT — `REGEX_EXTRACT(text, regex, [modifiers])` — Text — all regex matches in text as an array — text-4.md
+- REGEX_REPLACE — `REGEX_REPLACE(text, regex, replacement)` — Text — replace every regex match in text — text-4.md
+- REJECT — `REJECT(array | object, values_to_remove | LAMBDA(arg1, [arg2], expr))` — Lambdas, Arrays, Objects — drop array/object items matching a lambda or value list — lambdas.md
+- REMOVE — `REMOVE(text, text_to_remove)` — Text — remove every occurrence of a substring, or matching array items — text-4.md
+- REMOVE_FIRST — `REMOVE_FIRST(text, text_to_remove)` — Text — remove the first occurrence of a substring — text-4.md
+- REMOVE_KEY — `REMOVE_KEY(object, path)` — Objects — remove a key (by dotted path) from an object — objects-2.md
+- REPLACE — `REPLACE(text, search, replace_with)` — Text — replace every occurrence of a substring — text-5.md
+- REPLACE_FIRST — `REPLACE_FIRST(text, search, replace_with)` — Text — replace the first occurrence of a substring — text-5.md
+- REVERSE — `REVERSE(array)` — Arrays — reverse an array (and flatten nested arrays) — arrays-3.md
+- ROTATE — `ROTATE(array, steps)` — Arrays — rotate array elements by a number of steps — arrays-3.md
+- ROUND — `ROUND(number, [precision])` — Numbers — round a number to whole or to a given precision — numbers-3.md
+- RSA_AES_HYBRID_DECRYPT — `RSA_AES_HYBRID_DECRYPT(encrypted_data_array, key, [padding: "PKCS1_PADDING"])` — Encryption — decrypt data produced by RSA_AES_HYBRID_ENCRYPT — encryption-1.md
+- RSA_AES_HYBRID_ENCRYPT — `RSA_AES_HYBRID_ENCRYPT(plain_message, key, [padding: "PKCS1_PADDING"])` — Encryption — encrypt arbitrary-length data with RSA + AES — encryption-1.md
+- RSA_DECRYPT — `RSA_DECRYPT(encrypted_message, key, [padding: "PKCS1_PADDING"])` — Encryption — decrypt data with an RSA key — encryption-1.md
+- RSA_ENCRYPT — `RSA_ENCRYPT(plain_message, key, [padding: "PKCS1_PADDING"])` — Encryption — encrypt data with an RSA key — encryption-1.md
+- RSA_SIGN — `RSA_SIGN(data, key, [digest: "SHA256"])` — Encryption — sign data with an RSA private key — encryption-2.md
+- RSTRIP — `RSTRIP(text)` — Text — remove trailing whitespace — text-5.md
+- SECOND — `SECOND(date)` — Dates/Times — second of the minute of a date — dates-times-2.md
+- SET_KEY — `SET_KEY(object, path, value)` — Objects — set a key (by dotted path) on an object — objects-2.md
+- SHA1 — `SHA1(text)` — Hashing/Signing — hex SHA-1 hash of text — hashing-signing-1.md
+- SHA256 — `SHA256(text)` — Hashing/Signing — hex SHA-256 hash of text — hashing-signing-1.md
+- SHA256_BASE64 — `SHA256_BASE64(text)` — Hashing/Signing — Base64 SHA-256 hash of text — hashing-signing-2.md
+- SHA512 — `SHA512(text)` — Hashing/Signing — hex SHA-512 hash of text — hashing-signing-2.md
+- SHUFFLE — `SHUFFLE(array)` — Arrays — randomly reorder an array — arrays-3.md
+- SIN — `SIN(x)` — Numbers — sine of an angle in radians — numbers-3.md
+- SIZE — `SIZE(text_or_array)` — Text, Arrays — length of text or of an array — text-5.md
+- SLICE — `SLICE(text, start_index, [length])` — Text — 1 or `length` characters of text from a start index — text-5.md
+- SLICE_ARRAY — `SLICE_ARRAY(array, start_index, [length])` — Arrays — sub-array from a start index, optionally limited in length — arrays-3.md
+- SORT — `SORT(array, path, [include_json_paths: FALSE])` — Arrays — sort an array (case-sensitive), optionally by a path — arrays-3.md
+- SORT_NATURAL — `SORT_NATURAL(array, path, [include_json_paths: FALSE])` — Arrays — sort an array case-insensitively, optionally by a path — arrays-3.md
+- SPLIT — `SPLIT(text, delimiter)` — Text — split text into an array by a delimiter — text-5.md
+- SQRT — `SQRT(x)` — Numbers — square root of a number — numbers-3.md
+- STARTS_WITH — `STARTS_WITH(text, prefix)` — Text — true if text begins with a prefix — text-5.md
+- STORY_RUN_GUID — `STORY_RUN_GUID()` — Story Metadata — identifier of the story run in progress — story-metadata.md
+- STORY_RUN_LINK — `STORY_RUN_LINK([mode: "story_runs"])` — Story Metadata — URL of the story run in progress — story-metadata.md
+- STRIP — `STRIP(text)` — Text — remove leading and trailing whitespace — text-5.md
+- STRIP_HTML — `STRIP_HTML(text)` — Text — remove HTML tags from text — text-5.md
+- STRIP_NEWLINES — `STRIP_NEWLINES(text)` — Text — remove newline characters from text — text-5.md
+- SUM — `SUM(array)` — Arrays, Numbers — sum of an array of numbers — arrays-3.md
+- SWITCH — `SWITCH(expression, value_to_compare, value_to_return, ..., default_value)` — Logic — return the result paired with the first matching value — logic.md
+- TALLY — `TALLY(array, [strict_types: FALSE])` — Arrays — count occurrences of each unique element in an array — arrays-3.md
+- TAR — `TAR(compressed_file_data)` — Data Parsing/Conversion — create a tarball from a list of files — data-parsing-conversion-3.md
+- TEXT — `TEXT(value)` — Text — convert a value to text — text-6.md
+- TIMES — `TIMES(number, number)` — Numbers — multiply two numbers — numbers-3.md
+- TINES_DECRYPT — `TINES_DECRYPT(encrypted, key)` — Encryption — decrypt text produced by TINES_ENCRYPT — encryption-2.md
+- TINES_ENCRYPT — `TINES_ENCRYPT(text, key, [expires_in])` — Encryption — encrypt text with Tines' managed authenticated encryption — encryption-2.md
+- TITLEIZE — `TITLEIZE(text, [keep_id_suffix: FALSE])` — Text — capitalize each word and prettify separators — text-6.md
+- TODAY — `TODAY()` — Dates/Times — current UTC date as YYYY-MM-DD text — dates-times-2.md
+- TO_CSV — `TO_CSV(array_of_arrays)` — Data Parsing/Conversion — array of arrays to CSV text — data-parsing-conversion-3.md
+- TO_HEX — `TO_HEX(text)` — Data Parsing/Conversion — convert text or data to hexadecimal text — data-parsing-conversion-3.md
+- TO_JSON — `TO_JSON(object)` — Data Parsing/Conversion — convert an object to compact JSON text — data-parsing-conversion-3.md
+- TO_MARKDOWN_BLOCKQUOTE — `TO_MARKDOWN_BLOCKQUOTE(text)` — Text — quote text as a markdown blockquote — text-6.md
+- TO_MARKDOWN_BOLD — `TO_MARKDOWN_BOLD(text)` — Text — wrap text in markdown bold markers — text-6.md
+- TO_MARKDOWN_CALLOUT — `TO_MARKDOWN_CALLOUT(text, [type])` — Text — wrap text in a markdown callout (GitHub alert) — text-6.md
+- TO_MARKDOWN_CODEBLOCK — `TO_MARKDOWN_CODEBLOCK(text, [language])` — Text — wrap text in a markdown code fence — text-6.md
+- TO_MARKDOWN_HEADING — `TO_MARKDOWN_HEADING(text, [level])` — Text — turn text into a markdown heading line — text-6.md
+- TO_MARKDOWN_ITALIC — `TO_MARKDOWN_ITALIC(text)` — Text — wrap text in markdown italic markers — text-6.md
+- TO_MARKDOWN_LIST — `TO_MARKDOWN_LIST(array, [ordered: FALSE])` — Text — turn an array into a markdown list — text-6.md
+- TO_MARKDOWN_STRIKE — `TO_MARKDOWN_STRIKE(text)` — Text — wrap text in markdown strikethrough markers — text-6.md
+- TO_SNAKE_CASE — `TO_SNAKE_CASE(text, [from_camel_case: FALSE])` — Text — convert text to snake_case — text-7.md
+- TO_XML — `TO_XML(object, root_element_name = "hash")` — Data Parsing/Conversion — convert an object to XML text — data-parsing-conversion-3.md
+- TO_YAML — `TO_YAML(object)` — Data Parsing/Conversion — convert an object to YAML text — data-parsing-conversion-4.md
+- TRANSLITERATE — `TRANSLITERATE(text)` — Text — replace non-ASCII characters with ASCII approximations — text-7.md
+- TRUNCATE — `TRUNCATE(text, length, [ellipsis])` — Text — shorten text to a number of characters, adding an ellipsis — text-7.md
+- TRUNCATEWORDS — `TRUNCATEWORDS(text, length, [ellipsis])` — Text — shorten text to a number of words, adding an ellipsis — text-7.md
+- TYPE — `TYPE(value)` — Other — type (Ruby class name) of a value as text — other.md
+- UNFLATTEN_JSON — `UNFLATTEN_JSON(object, [separator])` — Objects — rebuild nested JSON from single-level dotted keys — objects-2.md
+- UNION — `UNION(array1, array2)` — Arrays — merge two arrays without duplicates — arrays-4.md
+- UNIQ — `UNIQ(array)` — Arrays — remove duplicate elements from an array — arrays-4.md
+- UNIX_TIMESTAMP — `UNIX_TIMESTAMP()` — Dates/Times — current unix timestamp in seconds — dates-times-2.md
+- UNTAR — `UNTAR(tar_data)` — Data Parsing/Conversion — unpack the files of a tar archive — data-parsing-conversion-4.md
+- UNZIP — `UNZIP(zip_data, [password])` — Data Parsing/Conversion — extract files from a ZIP archive — data-parsing-conversion-4.md
+- UPCASE — `UPCASE(text)` — Text — uppercase text — text-7.md
+- URL_DECODE — `URL_DECODE(text)` — Text — decode URL-encoded text — text-7.md
+- URL_ENCODE — `URL_ENCODE(text, [encoding: "form"])` — Text — URL-encode text (form encoding by default) — text-7.md
+- UUID — `UUID()` — Text — generate a UUID — text-7.md
+- VALUES — `VALUES(object)` — Objects — array of an object's values — objects-2.md
+- WHERE — `WHERE(array, path, [value], [null_on_path_error: FALSE])` — Arrays, Objects — filter an array of objects by the value at a key/path — arrays-4.md
+- WORKBENCH_LINK — `WORKBENCH_LINK()` — Story Metadata — URL that loads the incoming event data in Tines Workbench — story-metadata.md
+- XML_PARSE — `XML_PARSE(text)` — Data Parsing/Conversion — parse XML text into an object — data-parsing-conversion-4.md
+- YAML_PARSE — `YAML_PARSE(text, [parse_date_or_time: FALSE], [version: 1])` — Data Parsing/Conversion — parse YAML text into data — data-parsing-conversion-4.md
+- YEAR — `YEAR(date)` — Dates/Times — year of a date — dates-times-2.md
+- ZIP — `ZIP(fileContentsOrFilesArray, [filename], [password])` — Data Parsing/Conversion — create a ZIP archive from file contents — data-parsing-conversion-4.md
+- ZSCALER_OBFUSCATE_API_KEY — `ZSCALER_OBFUSCATE_API_KEY(api_key, now)` — Hashing/Signing — obfuscate a Zscaler API key with a timestamp — hashing-signing-2.md

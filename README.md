@@ -42,18 +42,22 @@ python3 scripts/validate_flow.py examples/cold-chain/f/cold_chain/review_excursi
 | `examples/cold-chain/` | An invented story export and its finished Windmill flow |
 | `scripts/tines_outline.py` | Compact digest of a story export |
 | `scripts/validate_flow.py` | Checks a written flow, with optional coverage against the story |
-| `scripts/tines_fn.py` | Looks up one function in the optional local function catalogue |
-| `scripts/fetch_tines_function_docs.py` | Downloads the Tines function reference pages |
+| `references/tines-functions/` | Per-function catalogue: 227 formula functions |
+| `scripts/tines_fn.py` | Prints one function's catalogue entry |
+| `scripts/ref.py` | Prints one section of a reference |
+| `scripts/check_ts.py` | Syntax-checks the step scripts of a flow |
+| `scripts/fetch_tines_function_docs.py` | Downloads the Tines function reference pages, for checking the catalogue against the source |
 
 The scripts need Python 3 and no extra packages.
 
-## The function catalogue is not included
+## The function catalogue
 
-`scripts/tines_fn.py` reads a per-function catalogue under
-`references/tines-functions/`. That catalogue reproduces Tines' documentation,
-so it is not part of this repository. `fetch_tines_function_docs.py` downloads
-the source pages so you can build your own copy. The lookup table in
-`references/tines-formulas-to-ts.md` works without it.
+`references/tines-functions/` has one entry per Tines formula function:
+arguments, porting notes, a TypeScript equivalent and examples. It is an
+independent, unofficial description written for porting. The Tines
+documentation is the authority, and each entry links to its page. The examples
+are illustrative and were run against the TypeScript equivalents, not against
+Tines. `scripts/tines_fn.py NAME` prints one entry.
 
 ## Not affiliated
 
