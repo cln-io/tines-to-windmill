@@ -49,13 +49,17 @@ and one TypeScript file per step.
      an error naming what is missing.
 6. **Never write a secret value into any file.** Refer to it by variable or
    resource path. The export can contain webhook secrets and internal
-   hostnames: do not copy them into the flow.
+   hostnames: do not copy them into the flow. A base URL or other value that
+   belongs to one environment goes into a variable or resource and is listed
+   under Setup in the notes. The host of a public vendor API may stay in the
+   code.
 7. **Never deploy.** Do not run `wmill sync push` or `wmill flow push` unless
    the user asks.
 8. **Code goes in separate files.** In `flow.yaml` write
    `content: "!inline <step_id>.ts"`, with the quotes. Do not embed code in YAML.
 9. **You are done with a workflow only when** `scripts/validate_flow.py` ends
-   with `RESULT: OK` and you have written the notes file from step 8.
+   with `RESULT: OK`, or with `RESULT: REVIEW` and every open warning is
+   explained in the notes, and you have written the notes file from step 8.
 
 ## How to read the references
 
@@ -136,7 +140,9 @@ the whole port, and the worksheet will. Read the worksheet again before step
 
 - the entry point and its trigger details (every cron line with its timezone,
   or the webhook path and verbs, or the page fields);
-- where the workflow branches, loops, fans out and joins;
+- where the workflow branches, loops, fans out and joins. When one trigger
+  has several no-match links, all of them run;
+- the recipe numbers the outline prints for this workflow;
 - which actions are dead ends: nothing reads their output and they have no
   outside effect;
 - every `CREDENTIAL.x`, `RESOURCE.x` and `STORY.x` it uses.
@@ -187,7 +193,9 @@ and list it in the notes file.
 Group the actions into steps using this table. The last column is the recipe
 number in `references/patterns.md`. A recipe shows the shape as the outline
 prints it, a complete `flow.yaml` fragment, the step files and the map lines.
-For every shape in your workflow, read its recipe and copy from it:
+The outline prints the recipe numbers that apply next to each action and in a
+line for the whole workflow. Read every recipe in that line before you design,
+and tick each one off in your worksheet. Copy from the recipes:
 
 ```
 python3 scripts/ref.py patterns 0      which outline shape is which recipe
@@ -218,13 +226,15 @@ If you are unsure how to group actions into steps, read
 | Throttle | First check which branch it is on: it limits only the actions after it. On the main work: flow `concurrent_limit` or step `sleep`. On a side branch (for example state writes only): often nothing is needed. Say what you did in the notes. | 20 |
 | Delay | Step `sleep`. | 19 |
 | Email action | A script with `nodemailer` and an `smtp` resource. | 22 |
-| Resource read (`RESOURCE.x`) | Settings or lookup table: a Windmill resource or a non-secret variable. | 23 |
+| Resource read (`RESOURCE.x`) | A keyed object, such as connection settings: a Windmill resource. A single string, or JSON used as data such as a lookup table: a non-secret variable. | 23 |
 | Resource written through the Tines API | State: `setState` if one step both reads and writes it. Otherwise a non-secret variable holding JSON. | 24 |
 | `CREDENTIAL.x` | A secret variable `f/<folder>/<x>`, or a typed resource. Keep the Tines name. If a credential and a resource have the same name, add `_secret` to the credential's path. | 25 |
 | A credential that is only used to call the Tines API | Dropped together with those calls. Say so in the notes. | 25 |
 | `disable_ssl_verification` on an HTTP request | `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun. Keep it only for that host and say so in the notes. | 10 |
 | `STORY_RUN_GUID()`, `META.story_run.id` | `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID`. `WM_JOB_ID` alone changes at every step. Say so in the notes. | 26 |
 | Calls to the Tines API for anything else | No equivalent. Stub it and report it. | 27 |
+| An early exit, then a final step that both paths share | A guard inside the script that returns the same keys, or a `branchone` with an empty default. The recipe says when to use which. | 30 |
+| A message or email with a link to a Tines page of another workflow (`PAGE.x`) | A non-secret variable holding the URL of whatever replaces that page. List it under Setup. Never a Tines URL. | 31 |
 | Disabled or unreachable action | Not ported. Inside the workflow it is already `DROPPED` in the map. Disabled chains outside the workflow have no map line. | 29 |
 
 Design rules:
@@ -289,14 +299,17 @@ python3 scripts/validate_flow.py OUT/f/<folder>/<flow_name>.flow --story S --wor
 
 Each finding is one line: `ERROR|WARN [check] where: what is wrong. Fix: ...`.
 Fix every `ERROR`, read every `WARN`, and run it again. Repeat until the last
-line is `RESULT: OK`. Fix the flow, not the map: do not mark an action
+line starts with `RESULT: OK`. `RESULT: REVIEW` means there are no errors but
+behaviour warnings are open: see below. Fix the flow, not the map: do not mark an action
 `DROPPED` only to make the report pass.
 
 After the structural findings there is a `BEHAVIOUR` block. Each line there
 says that the flow probably does not do something the story does: a request
 that no step makes, a branch or loop that is missing, a step that was copied.
 Treat each one as an error unless you can say in one sentence why it is
-correct. Put that sentence in the notes file under "Not verified".
+correct. Put that sentence in the notes file under "Not verified". A workflow
+that ends on `RESULT: REVIEW` is finished only when every open behaviour
+warning has its sentence in the notes.
 
 A `WARN` about a `DROPPED` action with an outside effect stays even when the
 drop is right. Make sure the reason in the map says why the effect is not

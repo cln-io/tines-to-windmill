@@ -10,6 +10,8 @@ Create these before the first run. Never write a secret value in this file.
 |---|---|---|---|
 | `f/my_folder/api_key` | variable | yes | API key of the item service: was `CREDENTIAL.api_key` |
 | `f/my_folder/item_api` | resource (custom type `c_item_api`) | no | keys `url`, `timeout`: was `RESOURCE.item_api` |
+| `f/my_folder/item_api_base_url` | variable | no | base URL of the item server (describe the system; do not write an internal host name here) |
+| `f/my_folder/request_form_url` | variable | no | URL of the form or app that replaces the Tines page `Request form`: was `PAGE.request_form` |
 | `f/my_folder/my_flow_state` | variable | no | JSON state, create it with the value `{}`: was `RESOURCE.my_flow_state` |
 
 Trigger: schedule file `f/my_folder/my_flow.schedule.yaml` (`0 */20 * * * *`, Europe/Dublin; Tines: `*/20 * * * *`).
@@ -43,4 +45,5 @@ One entry per difference: the Tines action and its id, what the story did, what 
 - The flow has not been run.
 - The TypeScript files were checked for syntax only (say with which tool, or say that they were not checked).
 - Each formula or action whose Tines behaviour you were not sure of, and how you read it.
+- Each pill that puts an array or an object into a request body or a message: Tines does not specify the rendering; the flow sends JSON.
 - Each Windmill behaviour you rely on that is marked "not verified" in the references.

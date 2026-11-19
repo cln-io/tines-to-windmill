@@ -28,7 +28,7 @@ An option value in an export is a string. Classify it first.
 
 The language inside `<<...>>`, inside `<%...%>` conditions, and after `=` is the same. Formulas may span several lines [export]; line breaks and spaces between tokens carry no meaning.
 
-Converting a value to text in text mode: arrays and objects become JSON text (archived Tines docs); `null` is assumed to become `""` (not specified in docs). Both are what the `text()` helper does.
+Converting a value to text in text mode (a `<<pill>>`, and `a & b`): use the `text()` helper. Text and numbers stay as written. `null` is assumed to become `""`. An array or an object becomes JSON text: that is this skill's convention. The current Tines docs do not specify it (an archived docs page said JSON). The function `TEXT(x)` is a different construct with a different result for objects: use `textFn(x)` (lookup file, section 1), never `text()`.
 
 ## 2 Literals and types
 
@@ -181,7 +181,7 @@ A lambda stored in `LOCAL` is in the same action's `local` option, so it IS in t
 
 - Condition position (`IF`, `AND`, `OR`, `NOT`, the `&&` and OR operators, `<%if%>`, a lambda result in `FILTER` / `REJECT` / `FIND` / `COUNTIF`): use `truthy(v)`, i.e. `v !== false && v != null`. Not needed when the expression is already a real boolean (`a > 1`, `a === "x"`).
 - Numeric text in math or comparison: wrap in `Number(...)` (see section 4).
-- A value placed inside text (`<<v>>`, `a & b`): use `text(v)`.
+- A value placed inside text (`<<v>>`, `a & b`): use `text(v)`. The function call `TEXT(v)`: use `textFn(v)`. A value placed inside an HTML body: use `esc(v)`.
 
 ## 8 Text mode: pills and control tags
 
@@ -194,6 +194,8 @@ Text mode has two kinds of insert [docs]: **value pills** `<<expr>>`, replaced b
 | `FORLOOP.index0`, `FORLOOP.index`, `FORLOOP.first`, `FORLOOP.last` | inside a `for`: zero-based position, one-based position, true on the first pass, true on the last pass [docs] | `i`, `i + 1`, `i === 0`, `i === arr.length - 1` with `for (const [i, x] of arr.entries())` |
 | `<% if cond %>`, `<% endif %>` | spaces inside the delimiters occur [export] | same as above |
 | `raw` ... `endraw` tag pair | the content is emitted literally with no interpolation, so text containing `<<` can be written [docs]; assumed spelling `<%raw%>` ... `<%endraw%>` (not seen in exports) | a plain string literal |
+
+**A pill that holds an array or an object** (`<<rows>>`, `<<fetch_item.body>>`): how Tines renders it is not specified in the docs. The skill's convention: it becomes JSON text, which is what `text()` gives. When a request body or a message depends on it (a list of rows inserted into a CSV body, an object inserted into a chat message), do two things: translate it with `text()`, or build the format the receiver needs in code, and record it under "Not verified" in the notes file.
 
 How to turn a text value with tags into code:
 
@@ -247,6 +249,7 @@ if ((report?.items ?? []).length === 0) out += "none";
 - `=` across types and on arrays / objects.
 - Number notation beyond plain, decimal and negative; negative array positions.
 - How `NULL`, booleans and decimal numbers are rendered as text (assumed `""`, `"true"` / `"false"`, plain JS number text).
+- How an array or an object inside a `<<pill>>` or next to `&` is rendered as text. Skill convention: JSON (`text()`). Record it under "Not verified" in the notes when a request body or a message depends on it (section 8).
 - Whether control tags trim surrounding whitespace; the export spelling of the `raw` tag.
 - Comment syntax; escaping of `<<` outside the `raw` tag; a literal leading `=` in plain text.
 - Scope rules when a lambda parameter, a loop variable and an action slug share a name (assumed: innermost wins).

@@ -44,7 +44,8 @@ const legacyStringify = (v: any): string =>
   : Array.isArray(v) ? `[${v.map(legacyStringify).join(", ")}]`
   : typeof v === "object" ? `{${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}=>${legacyStringify(x)}`).join(", ")}}`
   : typeof v === "string" ? JSON.stringify(v) : String(v);
-const text = (v: unknown): string =>
+// Named textFn so it is not confused with text(), the helper for pills and "&" (which gives JSON for objects).
+const textFn = (v: unknown): string =>
   typeof v === "string" ? v : v == null ? "" : typeof v === "object" ? legacyStringify(v) : String(v);
 ```
 

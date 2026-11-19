@@ -36,6 +36,7 @@ const isBlank = (v: any): boolean =>
   v == null || v === false || v === "" ||
   (Array.isArray(v) ? v.length === 0 : typeof v === "object" && Object.keys(v).length === 0);
 const truthy = (v: any): boolean => v !== false && v != null;
+// text(v): what a <<pill>> and `a & b` do with a value. null -> "". Array or object -> JSON (skill convention, see below).
 const text = (v: any): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
 // Path lookup for GET / MAP / WHERE / SORT: "a.b.c", "a[0].b", 'user["User ID"]'. Escaped dots ("a\.b") are not handled.
 const get = (o: any, path: string): any =>
@@ -84,6 +85,7 @@ const sw = (v: any, ...a: any[]) => {            // SWITCH(v, case1, result1, ..
 };
 const escHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
+const esc = (v: any): string => escHtml(text(v));   // every value put into an HTML body: esc(v), never text(v)
 const typeOf = (v: any): string =>               // TYPE returns Ruby class names
   v == null ? "NilClass" : v === true ? "TrueClass" : v === false ? "FalseClass"
   : Array.isArray(v) ? "Array" : typeof v === "object" ? "Hash"
@@ -107,7 +109,21 @@ const legacyStringify = (v: any): string =>      // TEXT / LEGACY_STRINGIFY on o
   v == null ? "nil" : Array.isArray(v) ? `[${v.map(legacyStringify).join(", ")}]`
   : typeof v === "object" ? `{${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}=>${legacyStringify(x)}`).join(", ")}}`
   : typeof v === "string" ? JSON.stringify(v) : String(v);
+// textFn(v): the TEXT() FUNCTION only. Same as text(v), except that a plain object gives the legacy {"k"=>"v"} form.
+const textFn = (v: any): string => (isObj(v) ? legacyStringify(v) : text(v));
 ```
+
+**Turning a value into text: one rule per construct.** These are different constructs. Do not mix the helpers.
+
+| Tines construct | Helper | A number, text, boolean | `NULL` | An array | An object |
+|---|---|---|---|---|---|
+| `<<pill>>` in text, and `a & b` | `text(v)` | as written (`7`, `true`) | `""` | JSON text | JSON text |
+| The function `TEXT(x)` | `textFn(x)` | the same | `""` | JSON text | legacy `{"k"=>"v"}` text, not JSON |
+| The function `TO_JSON(x)` | `JSON.stringify(x)` | JSON | `null` | JSON | JSON |
+| A value put into an HTML body | `esc(v)` | `text(v)`, HTML-escaped | `""` | escaped JSON | escaped JSON |
+
+- The current Tines docs do not say how a pill renders an array or an object. JSON is this skill's convention. When a request body or a message depends on it (a pill that inserts a list of rows into a CSV or JSON body), write it under "Not verified" in the notes.
+- `scripts/tines_fn.py TEXT` shows a helper that it also calls `text`. That one is `textFn` here. In a step, `text` always means the pill helper above.
 
 ## 2 Function tables
 
@@ -338,7 +354,7 @@ Ruby -> JS pattern differences: `\A` -> `^`, `\z` / `\Z` -> `$`; Ruby `^` `$` al
 
 | Tines | TypeScript | Notes |
 |---|---|---|
-| `TEXT(x)` | `isObj(x) ? legacyStringify(x) : text(x)` | numbers and text: plain `String(x)`; on objects Tines gives Ruby style `{"k"=>"v"}`, not JSON (use `TO_JSON` for JSON) |
+| `TEXT(x)` | `textFn(x)` | the function only, not a pill: numbers and text are plain `String(x)`; on objects Tines gives Ruby style `{"k"=>"v"}`, not JSON (use `TO_JSON` for JSON). A pill `<<x>>` is `text(x)` (section 1) |
 | `LEGACY_STRINGIFY(obj)` | `legacyStringify(obj)` | `{"k"=>"v"}` text; only the flat one-pair shape is documented, nested values are assumed; almost never wanted |
 | `TYPE(x)` | `typeOf(x)` | `"String"`, `"Integer"`, `"Float"`, `"Array"`, `"Hash"`, `"TrueClass"`, `"FalseClass"`, `"NilClass"`; rewrite tests such as `TYPE(x) = "Array"` to `Array.isArray(x)` |
 | `STORY_RUN_GUID()` | `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID` | one id shared by every event of a story run; nearest Windmill notion is the root flow job id |
@@ -360,7 +376,9 @@ Ruby -> JS pattern differences: `\A` -> `^`, `\z` / `\Z` -> `$`; Ruby `^` `$` al
 | `SLICE(x, 6)` | `x.slice(6)` | `x.at(6)` (one character) |
 | `SORT(nums)` | `nums.sort()` | `[...nums].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)` |
 | `DEFAULT(v, "x")` | `v ?? "x"` | `isBlank(v) ? "x" : v` |
-| `<<obj>>` inside text | `` `${obj}` `` (gives `[object Object]`) | `` `${JSON.stringify(obj)}` `` |
+| `<<obj>>` or `<<arr>>` inside text | `` `${obj}` `` (gives `[object Object]`; an array loses its brackets) | `` `${text(obj)}` `` (JSON: the skill's convention, not specified by Tines; note it as not verified) |
+| `TEXT(obj)` | `text(obj)` (the pill helper: JSON) | `textFn(obj)` (legacy `{"k"=>"v"}`) |
+| a value inside an HTML body | `` `<p>${text(v)}</p>` `` | `` `<p>${esc(v)}</p>` `` |
 | `a.b.c` where `b` may be missing | `a.b.c` (throws) | `a?.b?.c` (Tines yields `NULL`) |
 
 ## 4 Legacy Liquid
@@ -396,6 +414,8 @@ Rules: without `as_object` the result is always text; a value that is exactly on
 The official docs do not settle these. Translate as shown, and say so in the port's notes when a formula depends on one.
 
 - Language-level gaps (operator operand types and precedence, `=` across types, text rendering of `NULL`, tag whitespace) are listed in [tines-formula-language.md](tines-formula-language.md), section 11.
+- How a `<<pill>>` (or `&`) renders an **array or an object**. Not specified in the current Tines docs. The skill's convention is JSON text (`text()`). If a request body or a message depends on it, the port's notes must say so under "Not verified".
+- `TEXT(x)` on an array, on `NULL` and on nested objects (assumed: JSON, `""`, nested legacy form).
 - `MODULO` on negative numbers and `ROUND` on exact halves: Ruby behaviour assumed (sign of the divisor; halves away from zero). The docs examples agree with it but do not test either case.
 - Whether whitespace-only text (`"  "`) is blank for `IS_BLANK` / `DEFAULT`. Assumed: not blank.
 - `NUMBER(NULL)`, `NUMBER("")`, `SIZE(NULL)`, `SIZE(object)`, negative array indexes in paths (`arr[-1]`), `IS_EMPTY` on anything but text, arrays and objects, `DIVIDED_BY` with a zero divisor (the port throws).

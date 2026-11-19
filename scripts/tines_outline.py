@@ -48,10 +48,16 @@ WORDS
 
 GRAPH MARKERS
   FAN-OUT xN   emits to N receivers (parallel branches)
+  NO-MATCH FAN-OUT xN   a trigger with N no-match links: when its rules do not
+               match, ALL N of them fire, in parallel, like a fan-out
+  recipe N,M   sections of references/patterns.md that cover this action's
+               shape (`ref.py patterns N`). The header of a workflow lists the
+               distinct numbers to read. No number: nothing special to port.
   JOIN xN      N inbound links
   CYCLE        part of a loop of links (retry / poll loop)
   ^ aNN ...    link to an action already printed (join, or loop back)
-  (no-match)   link taken when a trigger's rules do NOT match
+  (no-match)   link taken when a trigger's rules do NOT match (one match link +
+               one no-match link is an if / else, not a fan-out)
   END          no outgoing links
   DEAD-END     no outgoing links and no side effect (unused trigger/transform)
   NO-EFFECT    (index, workflow header) no action that runs in the workflow has
@@ -74,7 +80,9 @@ WHAT IS SHOWN FOR AN ACTION
   Pages show mode, visibility, input fields and buttons, display conditions and
   where they submit. Record actions show the record type and each field
   formula. Send-to-story actions show which story they call and whether its
-  body is embedded in this export. Webhook secrets are redacted.
+  body is embedded in this export; for an embedded one, also the payload keys
+  the called story reads, those sent but never read, and those read but not
+  sent. The index entry of a callable sub-story lists the keys it reads. Webhook secrets are redacted.
 
 GLOBALS
   CREDENTIAL.x / RESOURCE.x / other namespaces, with the actions using them
@@ -124,6 +132,102 @@ LITERALS = {"TRUE", "FALSE", "NULL", "NIL"}
 PAGE_NOISE = {"fields", "page_logo", "page_width", "pages_action_color", "pages_appearance_mode",
               "pages_background_color", "mode"}
 PAGE_TEXT_TYPES = {"TITLE", "PARAGRAPH", "DIVIDER", "IMAGE"}
+
+
+# --------------------------------------------------------------------------
+# Recipes: which section of references/patterns.md covers the shape of an action.
+# One row per recipe: (number, what the outline shows, test). The test gets the
+# action and a small context and returns True when the recipe applies. To change
+# the mapping, edit this table only. Rows whose number has no section in
+# patterns.md are reported on stderr and not printed.
+# --------------------------------------------------------------------------
+
+def _opt_on(a, key):
+    return a["options"].get(key) not in (None, False, "", "false", "False", 0)
+
+
+def _status_rules(a):
+    """Values a trigger compares an HTTP status with."""
+    if a["type"] != "trigger":
+        return []
+    rules = a["options"].get("rules")
+    return [str(r.get("value")) for r in rules if isinstance(r, dict) and ".status" in str(r.get("path"))] \
+        if isinstance(rules, list) else []
+
+
+def _tines_api(a):
+    if a["type"] != "http_request":
+        return False
+    headers = a["options"].get("headers") if isinstance(a["options"].get("headers"), dict) else {}
+    return "global_resources" in str(a["options"].get("url")) or any(str(k).lower() == "x-user-token" for k in headers)
+
+
+def _resource_write(a):
+    method = str(a["options"].get("method") or "").lower()
+    return _tines_api(a) and method not in ("", "get") and (
+        "global_resources" in str(a["options"].get("url")) or
+        (isinstance(a["options"].get("payload"), dict) and "value" in a["options"]["payload"]))
+
+
+RECIPES = [
+    (1, "schedule on an action", lambda a, c: bool(a["schedule"])),
+    (2, "webhook entry, body fields only", lambda a, c: a["type"] == "webhook" and not c["webhook_extra"]),
+    (3, "webhook entry that needs headers, query or accepts GET", lambda a, c: a["type"] == "webhook" and c["webhook_extra"]),
+    (4, "page that starts a workflow", lambda a, c: a["type"] == "page" and not a["in"]),
+    (5, "page in the middle of a workflow", lambda a, c: a["type"] == "page" and bool(a["in"])),
+    (6, "HTTP request / 2xx status trigger", lambda a, c: (a["type"] == "http_request" and not _tines_api(a))
+        or any(v.startswith("2") for v in _status_rules(a))),
+    (7, "non-2xx status treated as data", lambda a, c: any(not v.startswith("2") for v in _status_rules(a))
+        or (bool(_status_rules(a)) and any(k == "no-match" for _, k in a["out"]))),
+    (8, "retry settings on an HTTP request", lambda a, c: a["type"] == "http_request"
+        and (_opt_on(a, "retry_on_status") or _opt_on(a, "retries"))),
+    (9, "poll / retry loop of links", lambda a, c: a["in_cycle"]),
+    (10, "TLS verification disabled", lambda a, c: _opt_on(a, "disable_ssl_verification")),
+    (11, "message-only transform", lambda a, c: a["type"] == "event_transform" and a["mode"] == "message_only"),
+    (12, "<%for%> / <%if%> tags in text", lambda a, c: c["has_tags"]),
+    (13, "explode / implode", lambda a, c: a["mode"] in ("explode", "implode")),
+    (14, "trigger with a no-match link", lambda a, c: any(k == "no-match" for _, k in a["out"] + a["in"])),
+    (15, "fan-out", lambda a, c: bool(a["fan_out"] or a["nomatch_fan_out"])),
+    (16, "join of several links", lambda a, c: bool(a["join"]) and a["mode"] != "implode" and not a["in_cycle"]),
+    (17, "group action", lambda a, c: a["type"] == "group"),
+    (18, "send to story, callee in the export", lambda a, c: bool(a["calls"] and a["calls"]["embedded"])),
+    (19, "delay", lambda a, c: a["mode"] == "delay" and not a["in_cycle"]),
+    (20, "throttle", lambda a, c: a["mode"] == "throttle"),
+    (21, "deduplicate", lambda a, c: a["mode"] == "deduplicate"),
+    (22, "send email", lambda a, c: a["type"] == "send_email"),
+    (23, "resource that is only read", lambda a, c: bool(c["resources"] - c["written"]
+        - {k.split(".", 1)[1] for k in a["called"]}) and not _tines_api(a)),   # a resource called as a function is recipe 27
+    (24, "resource written through the Tines API (state)", lambda a, c: _resource_write(a) or bool(c["resources"] & c["written"])),
+    (25, "credential", lambda a, c: any(g.startswith("CREDENTIAL") for g in a["globals"])),
+    (26, "META / story run id", lambda a, c: any(g.split(".")[0] == "META" for g in a["globals"]) or c["run_guid"]),
+    (27, "missing logic: lambda, story not in export, other Tines API call",
+        lambda a, c: bool(a["called"]) or bool(a["calls"] and not a["calls"]["embedded"])
+        or (_tines_api(a) and not _resource_write(a))),
+    (29, "disabled, unreachable or dead end", lambda a, c: a["status"] != "active" or a["dead_end"]),
+    (30, "early exit, then a shared final step that reads the skipped action", lambda a, c: bool(a["join"])
+        and not a["in_cycle"] and any(set(r["actions"]) & c["skippable_sources"] for r in a["refs"])),
+    (31, "link to a page of another workflow (PAGE.x)", lambda a, c: a["type"] != "page"
+        and any(g.split(".")[0] == "PAGE" for g in a["globals"])),
+]
+
+
+def known_recipes():
+    """Section numbers present in ../references/patterns.md, or None when the file is absent."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "patterns.md")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return None
+    found, fence = set(), False
+    for line in lines:
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+        elif not fence:
+            m = re.match(r"^#{2,3}\s+(\d+)[.):]?\s", line)
+            if m:
+                found.add(int(m.group(1)))
+    return found
 
 
 def outside_effect(a):
@@ -476,7 +580,10 @@ class Story:
         for aid in self.order:
             a = self.actions[aid]
             a["exit"] = a["guid"] in exits
-            a["fan_out"] = len(a["out"]) if len(a["out"]) > 1 else 0
+            primary = sum(1 for _, k in a["out"] if k != "no-match")
+            other = len(a["out"]) - primary
+            a["fan_out"] = primary if primary > 1 else 0          # several match / ordinary links
+            a["nomatch_fan_out"] = other if other > 1 else 0      # several no-match links: all fire
             a["join"] = len(a["in"]) if len(a["in"]) > 1 else 0
             a["in_cycle"] = aid in self._descendants(aid)
             a["end"] = not a["out"]
@@ -652,6 +759,91 @@ class Export:
                 if slug:
                     rec = self.called_stories.setdefault(slug, {"embedded": by_slug.get(slug), "callers": []})
                     rec["callers"].append(aid)
+        for s in self.stories:
+            s.input_keys = self._input_keys(s)
+        for s in self.stories:
+            for aid in s.order:
+                c = s.actions[aid]["calls"]
+                if c and c["embedded"]:
+                    self._compare_payload(s.actions[aid], self.story(c["embedded"]))
+        self._recipes()
+
+    @staticmethod
+    def _input_keys(story):
+        """Dotted paths a callable story reads from the body its caller sends (entry.body.x.y)."""
+        guid = story.raw.get("entry_agent_guid")
+        entry = next((a for a in story.actions.values() if guid and a["guid"] == guid), None)
+        if not entry:
+            return None
+        readers = [a for a in story.actions.values() if a["status"] == "active"] or list(story.actions.values())
+        keys = set()
+        for a in readers:
+            for r in a["refs"]:
+                if r["ref"] != entry["ref"] or entry["id"] not in r["actions"]:
+                    continue
+                for path in r["paths"]:
+                    parts = path.split(".")[1:]
+                    if parts[:1] == ["body"]:
+                        keys.add(".".join(parts[1:4]) or "(the whole body)")
+        return {"entry": entry["id"], "keys": sorted(keys)}
+
+    @staticmethod
+    def _compare_payload(action, callee):
+        c = action["calls"]
+        payload = action["options"].get("payload")
+        info = callee.input_keys
+        if not info or not isinstance(payload, dict):
+            c["reads"] = info["keys"] if info else None
+            c["sent"] = sorted(payload) if isinstance(payload, dict) else None
+            return
+        read_top = {k.split(".")[0] for k in info["keys"] if not k.startswith("(")}
+        whole = any(k.startswith("(") for k in info["keys"])
+        c["reads"], c["sent"] = info["keys"], sorted(payload)
+        c["sent_not_read"] = [] if whole else sorted(set(payload) - read_top)
+        c["read_not_sent"] = sorted(read_top - set(payload))
+
+    def _recipes(self):
+        known = known_recipes()
+        table = RECIPES
+        if known is None:
+            sys.stderr.write("tines_outline: note: references/patterns.md not found next to the scripts; "
+                             "recipe numbers are not printed.\n")
+            table = []
+        else:
+            missing = [n for n, _, _ in RECIPES if n not in known]
+            if missing:
+                sys.stderr.write("tines_outline: warning: recipe(s) %s have no section in references/patterns.md "
+                                 "and are not printed; update RECIPES in tines_outline.py.\n"
+                                 % ", ".join(map(str, missing)))
+            table = [r for r in RECIPES if r[0] in known]
+        for s in self.stories:
+            written = set()
+            for a in s.actions.values():
+                if _resource_write(a):
+                    blob = json.dumps(a["options"], ensure_ascii=False)
+                    written.update(k.split(".", 1)[1] for k in s.namespaces
+                                   if k.startswith("RESOURCE.") and re.search(r"\b%s\b" % re.escape(k.split(".", 1)[1]), blob))
+            header_readers = set()
+            for a in s.actions.values():
+                for r in a["refs"]:
+                    if any(re.match(r"^\w+\.(headers|query|method)\b", pth) for pth in r["paths"]):
+                        header_readers.update(r["actions"])
+            for a in s.actions.values():
+                texts = list(s._sources(a))
+                ctx = {
+                    "webhook_extra": a["id"] in header_readers,
+                    "has_tags": any("<%" in t for t in texts),
+                    "run_guid": any("STORY_RUN_GUID" in t for t in texts),
+                    "resources": {g.split(".", 1)[1] for g in a["globals"] if g.startswith("RESOURCE.")},
+                    "written": written,
+                    # direct match-side sources of an action that a no-match link also reaches (recipe 30)
+                    "skippable_sources": ({s.actions[k]["id"] for k, kind in a["in"] if kind != "no-match"}
+                                          if any(kind == "no-match" for _, kind in a["in"]) else set()),
+                }
+                hits = [n for n, _, test in table if test(a, ctx)]
+                if 29 in hits and a["status"] != "active":
+                    hits = [29]      # an action that never runs is not ported: only that recipe matters
+                a["recipes"] = hits
 
     def _add(self, raw):
         sid = "main" if not self.stories else "s%d" % len(self.stories)
@@ -795,6 +987,8 @@ def flags(a, in_tree=False):
         f.append("UNREACHABLE")
     if a["fan_out"]:
         f.append("FAN-OUT x%d" % a["fan_out"])
+    if a["nomatch_fan_out"]:
+        f.append("NO-MATCH FAN-OUT x%d" % a["nomatch_fan_out"])
     if a["join"]:
         f.append("JOIN x%d" % a["join"])
     if a["in_cycle"]:
@@ -806,6 +1000,21 @@ def flags(a, in_tree=False):
     elif a["end"] and in_tree:
         f.append("END")
     return f
+
+
+def recipe_tag(a):
+    return "recipe %s" % ",".join(map(str, a["recipes"])) if a.get("recipes") else ""
+
+
+def recipes_line(actions):
+    """'RECIPES ...' line for a set of actions: distinct numbers, those of actions that run first."""
+    live = sorted({n for a in actions if a["status"] == "active" for n in a.get("recipes", [])})
+    dead = any(a["status"] != "active" for a in actions)
+    nums = live + ([29] if dead and 29 not in live and any(29 in a.get("recipes", []) for a in actions) else [])
+    if not nums:
+        return None
+    return ("RECIPES for these shapes (read each with `ref.py patterns N`; the number is printed beside "
+            "every action it applies to): " + " ".join(map(str, nums)))
 
 
 def entry_detail(a):
@@ -858,6 +1067,8 @@ class Renderer:
             if a["calls"]:
                 bits.append("-> STORY.%s" % a["calls"]["story"])
             bits.extend(flags(a, in_tree=True))
+            if recipe_tag(a):
+                bits.append(recipe_tag(a))
             if a["children"] and not expand:
                 bits.append("{%d actions inside%s}" % (
                     len(a["children"]), ", " + size_text(sizes[aid]) if sizes else ""))
@@ -901,6 +1112,8 @@ class Renderer:
         extra = flags(a)
         if a["entry"] and not a["group"]:
             extra.insert(0, "ENTRY: " + "; ".join(a["entry"]))
+        if recipe_tag(a):
+            extra.append(recipe_tag(a))
         return head + ("  " + "  ".join(extra) if extra else "")
 
     def action(self, story, aid, out, brief=False, base_depth=0):
@@ -931,6 +1144,17 @@ class Renderer:
             elif c["embedded"]:
                 where = "STORY.%s - body embedded in this export as %s (print it with --story %s)" % (
                     c["story"], c["embedded"], c["embedded"])
+                if c.get("reads") is not None:
+                    where += "\n%s  %s reads these keys of the payload: %s" % (
+                        sp, c["embedded"], ", ".join(c["reads"]) or "none")
+                    if c.get("sent") is None:
+                        where += "\n%s  this call sends a computed payload: compare by hand" % sp
+                    else:
+                        where += "\n%s  sent here but never read by %s: %s" % (
+                            sp, c["embedded"], ", ".join(c.get("sent_not_read") or []) or
+                            ("cannot tell (it also uses the whole body)" if "(the whole body)" in c["reads"] else "none"))
+                        where += "\n%s  read by %s but not sent here (NULL there): %s" % (
+                            sp, c["embedded"], ", ".join(c.get("read_not_sent") or []) or "none")
             else:
                 where = "STORY.%s - body NOT in this export (separate story; port or ask for it)" % c["story"]
             out.append(sp + "calls: " + where)
@@ -1080,6 +1304,11 @@ class Renderer:
                 by_guid.get(raw.get("entry_agent_guid"), raw.get("entry_agent_guid") or "-"), ", ".join(ex) or "-"))
         else:
             out.append("  send-to-story: not enabled (story is not called as a sub-story)")
+        keys = getattr(story, "input_keys", None)
+        if keys:
+            out.append("  inputs: reads these keys of the payload its caller sends (%s.body.KEY; they become the "
+                       "flow inputs): %s" % (acts[keys["entry"]]["ref"], ", ".join(
+                           sorted({k.split(".")[0] for k in keys["keys"]}) if brief else keys["keys"]) or "none"))
         hooks = [i for i in top if acts[i]["type"] == "webhook"]
         pages = [i for i in top if acts[i]["type"] == "page"]
         out.append("  webhooks: %s%s | pages: %s" % (
@@ -1232,6 +1461,9 @@ class Renderer:
             out.append("  entry point: NONE FOUND (story only runs manually)")
         if len(story.workflows) > 1:
             out.append("  workflows: %s (independent; see --index)" % ", ".join(w["id"] for w in story.workflows))
+        line = recipes_line([story.actions[i] for i in story.order])
+        if line:
+            out.append("  " + line)
         out.append("")
         out.append("GRAPH (indent = link; see ACTIONS for details)")
         self.tree(story, None, None, 2, out)
@@ -1246,6 +1478,9 @@ class Renderer:
 
     def workflow_text(self, story, wf, mode="full"):
         out = ["WORKFLOW " + self.workflow_line(story, wf, with_size=False)]
+        line = recipes_line([story.actions[i] for i in wf["all"]])
+        if line:
+            out.append("  " + line)
         if wf["no_effect"]:
             out.append("  NO-EFFECT: no action that runs here writes anything outside the story (no HTTP write, "
                        "email, story call, record or page shown). Nothing to port unless the user says otherwise.")
@@ -1287,6 +1522,9 @@ class Renderer:
     def workflow_overview(self, story, wf, budget, full_size):
         acts = story.actions
         out = ["WORKFLOW " + self.workflow_line(story, wf, with_size=False)]
+        line = recipes_line([story.actions[i] for i in wf["all"]])
+        if line:
+            out.append("  " + line)
         out.append("  OVERVIEW ONLY: the full detail is %s, over the budget of %s chars. "
                    "Read it in pieces with the commands under NEXT." % (size_text(full_size), "{:,}".format(budget)))
         groups = [i for i in wf["top"] if acts[i]["children"]]
@@ -1405,7 +1643,7 @@ class Renderer:
 def render_json(export, story, ids):
     keep = ("id", "name", "ref", "type", "mode", "status", "status_reason", "disabled", "schedule",
             "entry", "story", "workflow", "group", "children", "guid", "options", "inputs", "page",
-            "record", "calls", "refs", "globals", "called", "unresolved", "fan_out", "join",
+            "record", "calls", "refs", "globals", "called", "unresolved", "fan_out", "nomatch_fan_out", "recipes", "join",
             "in_cycle", "end", "dead_end", "exit", "effect")
     actions = []
     for aid in ids:

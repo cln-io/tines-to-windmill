@@ -1,5 +1,8 @@
 // http_get.ts - HTTP GET with status handling and a typed result.
 // Copy to <step_id>.ts. Change the types, the URL, the header and the returned fields.
+// A public vendor API host may stay in the code, as here. The base URL of one of the user's own systems
+// is never copied from the export: pass it in from a variable, base_url: {type: static, value: "$var:f/my_folder/item_api_base_url"},
+// add the parameter base_url: string, and write fetch(`${base_url}/v1/items/...`). List the variable under Setup.
 // Its entries in flow.yaml:
 //   item_id: {type: javascript, expr: "flow_input.item_id"}
 //   api_key: {type: static, value: "$var:f/my_folder/api_key"}

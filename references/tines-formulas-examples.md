@@ -75,10 +75,11 @@ const sms = (collect_results ?? []).filter((o: any) => o?.channel === "sms")[0]?
 //        <p>https://track.example.com/parcel/<<BASE64_ENCODE(explode_parcels.scan.tracking_ref)>>/history</p>
 //        <p><<explode_parcels.scan>></p>
 const scan = explode_parcels?.scan;
-const body = `<p>${text(scan?.courier?.name)} - ${text(locate_depot?.body?.town)}</p>
-<p>${(scan?.flags ?? []).map((f: any) => f?.code ?? null).join(" / ")}</p>
+// HTML body: every inserted value goes through esc() (defined in tines-formulas-to-ts.md section 1).
+const body = `<p>${esc(scan?.courier?.name)} - ${esc(locate_depot?.body?.town)}</p>
+<p>${(scan?.flags ?? []).map((f: any) => esc(f?.code)).join(" / ")}</p>
 <p>https://track.example.com/parcel/${Buffer.from(text(scan?.tracking_ref)).toString("base64")}/history</p>
-<p>${text(scan)}</p>`;   // object pill -> JSON text
+<p>${esc(scan)}</p>`;   // object pill -> JSON text
 ```
 
 **9. `DATE` / `DATE_PARSE` chains.** (a) Relative-date text, formatted to month and year, re-parsed to unix seconds (a month name parses to the START of that month), minus one second, then formatted as ISO: the last second of the month before. `|>` binds loosest, so the `- 1` happens before the pipe. (b) `DATE_PARSE` with an explicit format, `.iso8601` field, `DATE_DIFF`. (c) Several `DATE_PARSE(...)` fields joined with `&` collapse into one format string.

@@ -7,6 +7,9 @@ USAGE
 
   Exit code: 0 = no errors, 1 = errors found (or any warning with --strict),
              2 = the flow could not be read at all.
+  Last line: `RESULT: OK ...`      no errors, no behaviour warnings
+             `RESULT: REVIEW ...`  no errors, but behaviour warnings remain (exit 0)
+             `RESULT: FAIL ...`    errors (exit 1 or 2)
   Every finding is one line:  ERROR|WARN [check-name] where: what is wrong. Fix: ...
   Fix all ERROR lines, re-run, repeat until the last line says RESULT: OK.
 
@@ -80,9 +83,10 @@ COVERAGE (--story): the tines_action_map.md convention
 
 BEHAVIOUR (--story): "valid, but does it do what the story does?"
   After the structural findings a BEHAVIOUR block lists heuristic WARN lines,
-  tagged [behaviour:<check>], and a `setup names` line to paste into the notes.
-  The RESULT line counts them separately; `RESULT: OK` with behaviour warnings
-  means: fix each one or explain it in the notes file. Checks:
+  tagged [behaviour:<check>], and a SETUP CHECKLIST to paste into the notes.
+  The RESULT line counts them separately and starts with `RESULT: REVIEW`
+  instead of `RESULT: OK` while any is open (exit code stays 0): fix each one,
+  or explain it in one sentence in the notes file. Checks:
     http            a mapped HTTP action's step mentions neither its host nor a
                     word of its path, or never uses its (non-GET) method
     email           a mapped email action's step does not send mail
@@ -2249,9 +2253,12 @@ def behaviour(v, cov, flow_dir):
             ", ".join(users[:6]) + (" ..." if len(users) > 6 else ""), name.split(".", 1)[1]),
              "read it from a variable or resource whose path ends in `%s` (keep the Tines name), or explain in the "
              "notes why it is not needed" % name.split(".", 1)[1])
-    if found:
-        lines.append("  setup names found in the flow (each needs a Windmill variable or resource; list them "
-                     "under Setup in the notes): " + ", ".join(found))
+    if found or absent:
+        lines.append("  SETUP CHECKLIST - credentials and resources that the story's mapped actions use (taken from "
+                     "the story, not from the flow). Each needs a Windmill variable or resource; list them under "
+                     "Setup in the notes.")
+        lines.append("    the flow refers to these by name: " + (", ".join(found) or "none"))
+        lines.append("    the flow does NOT mention these (see the setup warnings above): " + (", ".join(absent) or "none"))
     return lines
 
 
@@ -2344,14 +2351,16 @@ def main(argv=None):
     failed = bool(v.errors) or (args.strict and bool(v.warnings or n_behaviour))
     print("")
     if failed:
-        tail = ""
+        word, tail = "FAIL", ""
     elif n_behaviour:
-        tail = " - REVIEW the behaviour warnings: fix each, or explain it in the notes file"
+        word = "REVIEW"
+        tail = (" - not finished: fix each behaviour warning, or explain it in one sentence in the notes file")
     else:
+        word = "OK"
         tail = (" (structure and references only: this does not prove the flow runs or reproduces "
                 "the story's logic)")
     print("RESULT: %s - %d error(s), %d warning(s), %s%d module(s) checked%s" % (
-        "FAIL" if failed else "OK", len(v.errors), len(v.warnings),
+        word, len(v.errors), len(v.warnings),
         "%d behaviour warning(s), " % n_behaviour if args.story else "", n_mod, tail))
     return 1 if failed else 0
 

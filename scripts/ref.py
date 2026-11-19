@@ -10,6 +10,12 @@ USAGE
   ref.py --search suspend resume  sections that contain ALL the words, one line each
   ref.py openflow --search retry  the same, in one file
 
+  SEARCH RULE: words are matched as plain text, any case, anywhere in a section
+  (its own text, not its sub-sections). A section is listed only if it contains
+  EVERY word, so use one or two distinctive words. When no section contains
+  all of them, the search is repeated for ANY of the words, sections matching
+  the most words first, and the first output line says so.
+
   A file is named by its file name or any unambiguous part of it
   (windmill-openflow.md, openflow, formulas-to-ts, worked).
   Every output starts with a `# ... N chars (~T tokens)` line.
@@ -159,24 +165,27 @@ def pick(docs, key):
     return None, []
 
 
-def search(docs, words):
+def search(docs, words, any_word=False):
     words = [w.lower() for w in words]
     rows = []
     for d in docs:
         for s in d.sections:
             body = d.text(s, own=True)
             low = body.lower()
-            if not all(w in low for w in words):
+            present = [w for w in words if w in low]
+            if not present or (not any_word and len(present) < len(words)):
                 continue
-            count = sum(low.count(w) for w in words)
-            line = next((l.strip() for l in body.split("\n")[1:] if words[0] in l.lower()), "") or \
-                next((l.strip() for l in body.split("\n") if words[0] in l.lower()), "")
-            pos = line.lower().find(words[0])
+            count = sum(low.count(w) for w in words) + 100000 * len(present)
+            first = present[0]
+            line = next((l.strip() for l in body.split("\n")[1:] if first in l.lower()), "") or \
+                next((l.strip() for l in body.split("\n") if first in l.lower()), "")
+            pos = line.lower().find(first)
             if len(line) > 110:
                 start = max(0, pos - 40)
                 line = ("..." if start else "") + line[start:start + 110] + "..."
-            rows.append((-count, "%s %s  %s  (%s) | %s" % (d.name[:-3], d.label(s), s["title"],
-                                                         tokens(len(d.text(s))), line)))
+            hit = " [has: %s]" % " ".join(present) if any_word and len(words) > 1 else ""
+            rows.append((-count, "%s %s  %s  (%s)%s | %s" % (d.name[:-3], d.label(s), s["title"],
+                                                           tokens(len(d.text(s))), hit, line)))
     rows.sort(key=lambda r: r[0])
     return [r[1] for r in rows]
 
@@ -186,7 +195,9 @@ def main(argv=None):
     ap.add_argument("file", nargs="?", help="reference file name or an unambiguous part of it")
     ap.add_argument("section", nargs="*", help="section number (5.3) or words of its title")
     ap.add_argument("--toc", action="store_true", help="list sections (of one file, or of every file)")
-    ap.add_argument("--search", nargs="+", metavar="WORD", help="list sections containing all the words")
+    ap.add_argument("--search", nargs="+", metavar="WORD",
+                    help="list sections containing ALL the words (plain text, any case); if none does, "
+                         "sections containing ANY of them, most words first")
     ap.add_argument("--dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references"),
                     help="reference folder (default: ../references)")
     args = ap.parse_args(argv)
@@ -207,12 +218,18 @@ def main(argv=None):
 
     if args.search:
         rows = search([doc] if doc else docs, args.search)
-        shown = rows[:40]
-        body = "\n".join(shown) + ("\n" if shown else "")
+        note = ""
+        if not rows and len(args.search) > 1:
+            rows = search([doc] if doc else docs, args.search, any_word=True)
+            if rows:
+                note = ("no section contains ALL of: %s. Showing sections that contain ANY of the words, "
+                        "most words first:\n" % " ".join(args.search))
+        shown = rows[:40 if not note else 15]
+        body = note + "\n".join(shown) + ("\n" if shown else "")
         if len(rows) > len(shown):
             body += "... %d more section(s): add a word to narrow the search\n" % (len(rows) - len(shown))
         if not rows:
-            body = "no section contains all of: %s\n" % " ".join(args.search)
+            body = "no section contains any of: %s (words are matched as plain text; try a shorter or different word)\n" % " ".join(args.search)
         else:
             body += "print one with: %s <file> <section number or title words>\n" % me
         sys.stdout.write(size_line("search %s" % " ".join(args.search), body) + body)

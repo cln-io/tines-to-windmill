@@ -9,6 +9,7 @@ const isBlank = (v: any): boolean =>
   v == null || v === false || v === "" ||
   (Array.isArray(v) ? v.length === 0 : typeof v === "object" && Object.keys(v).length === 0);
 const truthy = (v: any): boolean => v !== false && v != null;      // Tines: 0 and "" are truthy
+// text(v): what a <<pill>> or `a & b` does. null -> "", array or object -> JSON. For the TEXT() function use textFn (formulas-to-ts section 1).
 const text = (v: any): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
 
 type Item = { id: string; name: string; tags: string[] };

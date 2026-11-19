@@ -2,12 +2,13 @@
 
 Find the shape you see in the outline. Open that one recipe. Copy it. Change names, URLs, fields and paths. Keep the structure.
 
-**Status: validated structurally only.** Every `flow.yaml` and action map below passes `scripts/validate_flow.py`, and every TypeScript file passes a syntax check. **Nothing here was run on a Windmill instance.** Section 30 lists what is not verified. The outline blocks are real output of `scripts/tines_outline.py` on an invented story ("Library - desk automations"). Every name, host and value is made up.
+**Status: validated structurally only.** Every `flow.yaml` and action map below passes `scripts/validate_flow.py`, and every TypeScript file passes a syntax check. **Nothing here was run on a Windmill instance.** Section 32 lists what is not verified. The outline blocks are real output of `scripts/tines_outline.py` on an invented story ("Library - desk automations"). Every name, host and value is made up.
 
 How to read a recipe:
 
 - Open one recipe with `python3 scripts/ref.py patterns 7`. The table below is `python3 scripts/ref.py patterns 0`.
 - **Outline shows**: the lines that identify the shape. Other lines are left out.
+- The outline prints `recipe N,M` at the end of an action line. `N` and `M` are section numbers of this file.
 - A block that starts with `# flow.yaml` is one complete small flow. Copy its `properties` entries and its `modules` items into your flow.
 - A block that starts with `// name.ts` is one complete step file. The file name is the step id.
 - A block that starts with `# workflow:` holds the lines for `tines_action_map.md`.
@@ -21,7 +22,7 @@ How to read a recipe:
 |---|---|
 | `ENTRY: schedule cron ...` | 1 |
 | `[webhook]  ENTRY: webhook`, and later actions read only `<name>.body.x` | 2 |
-| `[webhook]`, and later actions read `<name>.headers.x`, or the sender has its own secret, or `verbs` has `get` | 3 |
+| `[webhook]`, and later actions read `<name>.headers.x` or query values, or the sender must keep its own secret | 3 |
 | `[page/...]  ENTRY: page` | 4 |
 | `[page/...]` with `links: in aNN` (a page that is not the entry) | 5 |
 | `[http_request]` followed by a `[trigger]` whose rule tests `.status` against `200` | 6 |
@@ -32,8 +33,8 @@ How to read a recipe:
 | `[event_transform/message_only]` | 11 |
 | `<%for ...%>` or `<%if ...%>` inside a `payload:` or `body:` text | 12 |
 | `[event_transform/explode]`, with or without `[event_transform/implode]` | 13 |
-| `(no-match)` in front of an action | 14 |
-| `FAN-OUT xN` | 15 |
+| `(no-match)` in front of an action. `NO-MATCH FAN-OUT xN` on a trigger: all N no-match links fire | 14 |
+| `FAN-OUT xN` (N match links from one action) | 15 |
 | `JOIN xN` on an action that is not an implode and has no `CYCLE` | 16 |
 | `[group]` and `{ inside group aNN:` | 17 |
 | `[send_to_story]` with `calls: STORY.x - body embedded in this export` | 18 |
@@ -48,24 +49,38 @@ How to read a recipe:
 | `CALLED AS FUNCTION`, or `body NOT in this export`, or another URL of the Tines tenant | 27 |
 | A delete or send action fed by `DEFAULT(<filtered list>, <full list>)` or a similar fallback | 28 |
 | `DISABLED`, `UNREACHABLE`, `DEAD-END`, `NOT TRIGGERED` | 29 |
+| `JOIN xN` after a `(no-match)` link, and the joined action reads the output of an action that only one side runs | 30 |
+| `PAGE.x` on the `uses:` line of an action that is not that page | 31 |
 
-Three helpers appear in several recipes. Paste the ones a step uses:
+Four helpers appear in several recipes. Paste the ones a step uses. They have the same names and the same behaviour in every reference file:
 
 ```ts
 const isBlank = (v: any): boolean =>
   v == null || v === false || v === "" ||
   (Array.isArray(v) ? v.length === 0 : typeof v === "object" && Object.keys(v).length === 0);
 const truthy = (v: any): boolean => v !== false && v != null;      // Tines: 0 and "" are truthy
+// text(v): what a <<pill>> or `a & b` does with a value. null gives "". An array or object gives JSON.
 const text = (v: any): string => (v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
+// esc(v): text(v) made safe for HTML. Every value put into an HTML body goes through esc().
+const esc = (v: any): string =>
+  text(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 ```
+
+Rules for values put into text:
+
+- A `<<pill>>` and `a & b`: use `text()`. The Tines function `TEXT(x)` is different: use `textFn(x)` from `tines-formulas-to-ts.md` section 1. Never use `text()` for `TEXT()`.
+- An array or object inside a pill becomes JSON. That is this skill's convention. Tines does not specify it. When a request body or a message depends on it, write it under "Not verified" in the notes.
+- HTML (an email body, an HTML page): build it in the script and put every value through `esc()` (recipe 22).
+- Markdown chat message: use `text()`, not `esc()`. HTML entities would show as text, and Tines did not escape either. A value from outside can still add formatting, a link or a mention. If the values come from outside the organisation, say so under "Not verified". In a Markdown table cell replace the pipe character and line breaks: `text(v).replace(/\|/g, "\\|").replace(/\r?\n/g, " ")`.
+- A URL inside a message comes from a variable or is built with `encodeURIComponent` on each inserted value.
 
 ## 1. Schedule on an action
 
 **Outline shows**
 ```text
-a001 branch_list  "branch list"  [event_transform/message_only]  ENTRY: schedule cron 0 7 * * 1-5 (Europe/Dublin); schedule cron 30 13 * * 6 (Europe/Dublin)
+a001 branch_list  "branch list"  [event_transform/message_only]  ENTRY: schedule cron 0 7 * * 1-5 (Europe/Dublin); schedule cron 30 13 * * 6 (Europe/Dublin)  recipe 1,11
   payload: ["central", "harbour", "hillside"]
-a002 request_shelf_check  "Request shelf check"  [http_request]
+a002 request_shelf_check  "Request shelf check"  [http_request]  recipe 6,25
   payload: {"branches": "=branch_list"}
 ```
 **Write** one schedule file per cron line. Put it next to the flow folder, not inside it.
@@ -139,9 +154,9 @@ a002 -> request_shelf_check   # Request shelf check [http_request]
 
 **Outline shows**
 ```text
-a003 suggestion_in  "suggestion in"  [webhook]  ENTRY: webhook
+a003 suggestion_in  "suggestion in"  [webhook]  ENTRY: webhook  recipe 2
   verbs: get,post
-a004 record_suggestion  "Record suggestion"  [http_request]
+a004 record_suggestion  "Record suggestion"  [http_request]  recipe 6,25
   payload: {"title": "<<suggestion_in.body.title>>", "isbn": "<<suggestion_in.body.isbn>>", "member": "<<suggestion_in.body.member_id>>"}
 ```
 **Write** one flow input per `<webhook>.body.x` that a later action reads. No trigger file: every flow has a webhook.
@@ -200,10 +215,10 @@ a004 -> record_suggestion   # Record suggestion [http_request]
 
 **Outline shows**
 ```text
-a005 courier_update  "courier update"  [webhook]  ENTRY: webhook
+a005 courier_update  "courier update"  [webhook]  ENTRY: webhook  recipe 3
   secret: <redacted>
   include_headers: true
-a006 update_parcel  "Update parcel"  [http_request]
+a006 update_parcel  "Update parcel"  [http_request]  recipe 6,25
   payload: {"state": "<<courier_update.body.state>>", "depot": "<<courier_update.headers.x_courier_depot>>", "trace": "<<courier_update.body.trace>>"}
 ```
 **Write** a `preprocessor_module` beside `modules`. It gets the raw request and returns the flow inputs.
@@ -309,7 +324,7 @@ a006 -> update_parcel   # Update parcel [http_request]
 
 **Outline shows**
 ```text
-a007 book_a_room  "Book a room"  [page/success_page]  ENTRY: page
+a007 book_a_room  "Book a room"  [page/success_page]  ENTRY: page  recipe 4
     input room [OPTION] required: {"default_value": "Oak", "options": ["Oak", "Birch", "Studio"]}
     input day [SHORT_TEXT] required
     input attendees [SHORT_TEXT]: {"default_value": 2}
@@ -392,9 +407,9 @@ a008 -> create_booking   # Create booking [http_request]
 
 **Outline shows**
 ```text
-a010 get_fines  "Get fines"  [http_request]
+a010 get_fines  "Get fines"  [http_request]  recipe 6,25
   links: in a009 | out a011
-a011 confirm_waiver  "Confirm waiver"  [page/success_page]
+a011 confirm_waiver  "Confirm waiver"  [page/success_page]  recipe 5
   links: in a010 | out a012
     text paragraph: Member <<waiver_request.body.member_id>> owes <<get_fines.body.total>>.
     input fines [TABLE]: {"content": "=get_fines.body.items"}
@@ -496,10 +511,11 @@ a012 -> waive_fines   # Waive fines [http_request]
 
 **Outline shows**
 ```text
-  a013 get_new_arrivals [http_request]  ENTRY: schedule cron */30 * * * * (Europe/Dublin)
-    a014 _200 [trigger]
-      a015 titles [event_transform/message_only]
-        a016 publish_arrivals [http_request]  END
+  a013 get_new_arrivals [http_request]  ENTRY: schedule cron */30 * * * * (Europe/Dublin)  recipe 1,6,25
+    a014 _200 [trigger]  recipe 6
+      a015 titles [event_transform/message_only]  recipe 11
+        a016 publish_arrivals [http_request]  END  recipe 6,25
+  url: https://catalog.lib.internal/api/v2/arrivals?days=1
   rules: [{"type": "field==value", "value": "200", "path": "<<get_new_arrivals.status>>"}]
   payload: =MAP(get_new_arrivals.body.items, "title")
 ```
@@ -519,6 +535,7 @@ value:
         language: bun
         content: "!inline fetch_new_arrivals.ts"
         input_transforms:
+          catalog_base_url: {type: static, value: "$var:f/library/catalog_base_url"}
           api_key: {type: static, value: "$var:f/library/catalog_key"}
     - id: publish_arrivals
       value:
@@ -543,8 +560,9 @@ args: {}
 type Arrival = { title?: string };
 
 // a013 Get new arrivals, a014 200, a015 titles
-export async function main(api_key: string): Promise<{ titles: (string | null)[] }> {
-  const res = await fetch("https://catalog.example.org/api/v2/arrivals?days=1", {
+export async function main(catalog_base_url: string, api_key: string): Promise<{ titles: (string | null)[] }> {
+  // The story's URL has an internal host. The host is not copied: the base URL comes from a variable.
+  const res = await fetch(`${catalog_base_url}/api/v2/arrivals?days=1`, {
     headers: { "X-Api-Key": api_key },
   });
   if (res.status !== 200) throw new Error(`arrivals returned ${res.status}`);   // a014: only 200 continues
@@ -576,20 +594,23 @@ a016 -> publish_arrivals   # Publish arrivals [http_request]
 - One step per action: a step for the request, a `branchone` for `200`, a step for `titles`. Write one script.
 - The whole response body is returned. Return the fields that later steps read.
 - A GET `payload` is sent as a body. In Tines a `payload` on `method: get` is the query string.
+- An internal host from the export (`catalog.lib.internal`) is copied into the script or the notes. Rule: the base URL of one of the user's own systems, and any other value that differs per environment, lives in a non-secret variable (or in a resource, recipe 23) and is listed under Setup. The path after the host stays in the code.
+- A public vendor API host (`signage.example.net`) is moved to a variable too. It may stay in the code.
+- How to tell: internal is a private IP address, a name with no public domain (`.internal`, `.local`, `.lan`, `.corp`) or a host under the user's own domain. If you are not sure, treat it as internal.
 
 **Notes file**
-- Setup: the secret variables `f/library/catalog_key` and `f/library/signage_key`. The schedule file.
+- Setup: the secret variables `f/library/catalog_key` and `f/library/signage_key`. The variable `f/library/catalog_base_url`, not secret: "base URL of the catalogue server, with `https://` and no slash at the end". Describe the system. Do not write its host name in the notes. The schedule file.
 - Behaviour differences: a status other than 200 stopped the story silently. The flow fails with the status in the error.
 
 ## 7. HTTP call whose non-2xx status is data, not a failure
 
 **Outline shows**
 ```text
-    a018 find_member [http_request]
-      a019 member_found [trigger]  FAN-OUT x2
-        a020 log_visit [http_request]  END
-        (no-match) a021 _404 [trigger]
-          a022 create_guest_pass [http_request]  END
+    a018 find_member [http_request]  recipe 6,25
+      a019 member_found [trigger]  recipe 6,7,14
+        a020 log_visit [http_request]  END  recipe 6,25
+        (no-match) a021 _404 [trigger]  recipe 7,14
+          a022 create_guest_pass [http_request]  END  recipe 6,25
   rules: [{"type": "field==value", "value": "200", "path": "<<find_member.status>>"}]
   rules: [{"type": "field==value", "value": "404", "path": "<<find_member.status>>"}]
 ```
@@ -663,7 +684,7 @@ a022 -> handle_card_scan   # Create guest pass [http_request]
 
 **Outline shows**
 ```text
-a024 renew_loan  "Renew loan"  [http_request]
+a024 renew_loan  "Renew loan"  [http_request]  recipe 6,8,25
   url: https://loans.example.org/v1/loans/<<renewal_request.body.loan_id>>/renew
   timeout: "20"
   retries: "4"
@@ -733,12 +754,12 @@ a024 -> renew_loan   # Renew loan [http_request]
 
 **Outline shows**
 ```text
-  a025 start_catalogue_export [http_request]  ENTRY: schedule cron 0 2 * * 0 (Europe/Dublin)
-    a026 wait_for_export [event_transform/delay]  JOIN x2  CYCLE
-      a027 get_export_status [http_request]  CYCLE
-        a028 still_running [trigger]  FAN-OUT x2  CYCLE
+  a025 start_catalogue_export [http_request]  ENTRY: schedule cron 0 2 * * 0 (Europe/Dublin)  recipe 1,6,25
+    a026 wait_for_export [event_transform/delay]  JOIN x2  CYCLE  recipe 9
+      a027 get_export_status [http_request]  CYCLE  recipe 6,9,25
+        a028 still_running [trigger]  CYCLE  recipe 9,14
           ^ a026 wait_for_export  (CYCLE: loops back)
-          (no-match) a029 share_export [http_request]  END
+          (no-match) a029 share_export [http_request]  END  recipe 6,14,25
   seconds: "20"
   rules: [{"type": "field==value", "value": "running", "path": "<<get_export_status.body.state>>"}]
 ```
@@ -834,9 +855,9 @@ a029 -> share_export   # Share export [http_request]
 
 **Outline shows**
 ```text
-  a030 get_kiosk_status [http_request]  ENTRY: schedule cron */10 * * * * (Europe/Dublin)
+  a030 get_kiosk_status [http_request]  ENTRY: schedule cron */10 * * * * (Europe/Dublin)  recipe 1,6,10
     a031 not_ok [trigger]
-      a032 report_kiosk [http_request]  END
+      a032 report_kiosk [http_request]  END  recipe 6,25
   url: https://kiosk.harbour.example.net:8443/status
   disable_ssl_verification: true
   rules: [{"type": "field!=value", "value": "ok", "path": "<<get_kiosk_status.body.state>>"}]
@@ -907,10 +928,10 @@ a032 -> check_kiosk   # Report kiosk [http_request]
 
 **Outline shows**
 ```text
-    a034 clean_isbn [event_transform/message_only]
-      a035 shelf_label [event_transform/message_only]  FAN-OUT x2
-        a036 print_shelf_label [http_request]  END
-        a037 add_to_display_list [http_request]  END
+    a034 clean_isbn [event_transform/message_only]  recipe 11
+      a035 shelf_label [event_transform/message_only]  FAN-OUT x2  recipe 11,15
+        a036 print_shelf_label [http_request]  END  recipe 6,25
+        a037 add_to_display_list [http_request]  END  recipe 6,25
   payload: =REPLACE(new_copy.body.isbn, "-", "") |> UPCASE(%)
   payload: {"isbn": "=clean_isbn", "line": "<<new_copy.body.title>> (<<new_copy.body.year>>)", "shelf": "=DEFAULT(new_copy.body.shelf, \"unsorted\")"}
 ```
@@ -1021,7 +1042,7 @@ a037 -> add_to_display_list   # Add to display list [http_request]
 
 **Outline shows**
 ```text
-a039 notice_text  "notice text"  [event_transform/message_only]
+a039 notice_text  "notice text"  [event_transform/message_only]  recipe 11,12
   payload: |-
     Hello <<due_list.body.member.first_name>>,
     <%if SIZE(due_list.body.loans) = 0%>You have nothing due.
@@ -1097,20 +1118,23 @@ a040 -> send_notice   # Send notice [http_request]
 - Line breaks are tidied. Copy every literal character, also the newline that touches a tag.
 - The block marker is ignored. `|-` means the text has no newline at the end. `|` means it has one.
 - A condition uses JavaScript truthiness. `<%if x%>` is true for `0` and `""`. Use `truthy(x)` for a bare value.
+- A pill holds an array or an object (`<<rows>>` in a CSV or JSON body). Tines does not specify how that renders. This skill's convention is JSON: `text(rows)`. If the receiver needs another format (CSV lines), build that format in code and say so in the notes.
+- The text is HTML (an email body, a table with `<tr>` tags). Then every inserted value goes through `esc()`, not `text()`. For a Markdown chat message use `text()`; in a table cell also replace the pipe character and line breaks.
 
 **Notes file**
 - Mapping: the text action is a function inside the step that sends the text.
+- Not verified, when a request body or a message depends on it: "`<<name>>` holds an array (or object). Tines does not document how a pill renders it. The flow sends JSON."
 - Not verified: whether Tines trims white space next to a tag. The function keeps every character of the template.
 
 ## 13. Explode, work per item, implode
 
 **Outline shows**
 ```text
-    a042 explode_items [event_transform/explode]
-      a043 place_hold [http_request]
-        a044 build_row [event_transform/message_only]
-          a045 collect_rows [event_transform/implode]
-            a046 send_summary [http_request]  END
+    a042 explode_items [event_transform/explode]  recipe 13
+      a043 place_hold [http_request]  recipe 6,25
+        a044 build_row [event_transform/message_only]  recipe 11
+          a045 collect_rows [event_transform/implode]  recipe 13
+            a046 send_summary [http_request]  END  recipe 6,25
   path: =reserve_items.body.items
   to: item
   payload: {"item": "<<explode_items.item.id>>", "hold": "<<place_hold.body.hold_id>>", "ok": "=place_hold.status = 201"}
@@ -1205,12 +1229,13 @@ a046 -> send_summary   # Send summary [http_request]
 
 **Outline shows**
 ```text
-    a048 is_reference [trigger]  FAN-OUT x2
-      a049 book_reading_room_slot [http_request]  END
-      (no-match) a050 place_hold_for_pickup [http_request]  END
+    a048 is_reference [trigger]  NO-MATCH FAN-OUT x2  recipe 14,15
+      a049 book_reading_room_slot [http_request]  END  recipe 6,25
+      (no-match) a050 place_hold_for_pickup [http_request]  END  recipe 6,14,25
+      (no-match) a108 add_desk_log_entry [http_request]  END  recipe 6,14,25
   rules: [{"type": "field==value", "value": "reference", "path": "<<desk_request.body.collection>>"}]
 ```
-**Write** a `branchone`. The rules become the branch `expr`. The `(no-match)` side becomes `default`.
+**Write** a `branchone`. The rules become the branch `expr`. The `(no-match)` side becomes `default`. Here the trigger has two no-match links (`NO-MATCH FAN-OUT x2`). When the rules do not match, both fire. So `default` holds both steps.
 ```yaml
 # flow.yaml
 summary: Route a desk request
@@ -1250,6 +1275,14 @@ value:
                 item_id: {type: javascript, expr: "flow_input.item_id"}
                 member_id: {type: javascript, expr: "flow_input.member_id"}
                 api_token: {type: static, value: "$var:f/library/loans_token"}
+          - id: add_desk_log_entry
+            value:
+              type: rawscript
+              language: bun
+              content: "!inline add_desk_log_entry.ts"
+              input_transforms:
+                item_id: {type: javascript, expr: "flow_input.item_id"}
+                loans_token: {type: static, value: "$var:f/library/loans_token"}
 ```
 ```ts
 // book_reading_room_slot.ts
@@ -1277,34 +1310,52 @@ export async function main(item_id: string, member_id: string, api_token: string
   return { route: "pickup", status: res.status };
 }
 ```
+```ts
+// add_desk_log_entry.ts
+// a108 Add desk log entry: the second no-match link of a048. It runs whenever a050 runs.
+export async function main(item_id: string, loans_token: string) {
+  const entry = { kind: "pickup-hold", item_id };
+  const res = await fetch("https://loans.example.org/v1/desk-log", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${loans_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+  });
+  if (!res.ok) throw new Error(`desk log entry was not written: ${res.status}`);
+  return { logged: true };
+}
+```
 ```text
 # workflow: w14
 a047 -> flow_input.collection, flow_input.item_id, flow_input.member_id   # desk request [webhook]
 a048 -> route_request   # is reference [trigger]
 a049 -> book_reading_room_slot   # Book reading room slot [http_request]
 a050 -> place_hold_for_pickup   # Place hold for pickup [http_request]
+a108 -> add_desk_log_entry   # Add desk log entry [http_request]
 ```
 **Goes wrong**
 - `default` is left out. It is required. A trigger with no `(no-match)` link gets `default: []`.
+- Several `(no-match)` links are read as "one of them". All of them fire. Put all of them in `default`, one after another. Use a `branchall` inside `default` only if a later step needs all their results (recipe 15).
+- Several match links from one trigger (`FAN-OUT xN` on the trigger) all fire too. Put all of them in the branch.
 - A step after the branch reads `results.book_reading_room_slot`. Read `results.route_request`, and give both sides the same result keys.
 - Several rules: without `must_match` all rules must hold (`&&`). `must_match: "1"` means any rule (`||`).
 - A rule of type `formula` has its formula in `path`. Ignore its `value`.
 
 **Notes file**
 - Mapping: the trigger is the `branchone`; say which side is `default`.
+- Behaviour differences: the two no-match actions ran side by side in Tines. Here `add_desk_log_entry` runs after `place_hold_for_pickup`, and not at all if that step fails.
 - Not verified: Tines compares rule values loosely (`"200"` equals `200`). If the types can differ, compare text: `String(x) === 'reference'`.
 
 ## 15. One action linking to several actions (fan-out)
 
 **Outline shows**
 ```text
-  a051 title_lookup [webhook]  ENTRY: webhook  FAN-OUT x2
-    a052 check_shelf [http_request]
-      a054 tag_for_join [event_transform/message_only]
-        a056 join_sources [event_transform/implode]  JOIN x2
-          a057 send_answer [http_request]  END
-    a053 check_ebook [http_request]
-      a055 tag_for_join [event_transform/message_only]
+  a051 title_lookup [webhook]  ENTRY: webhook  FAN-OUT x2  recipe 2,15
+    a052 check_shelf [http_request]  recipe 6,25
+      a054 tag_for_join [event_transform/message_only]  recipe 11
+        a056 join_sources [event_transform/implode]  JOIN x2  recipe 13
+          a057 send_answer [http_request]  END  recipe 6,25
+    a053 check_ebook [http_request]  recipe 6,25
+      a055 tag_for_join [event_transform/message_only]  recipe 11
         ^ a056 join_sources  (JOIN: shown above)
     shelf_copies: =WHERE(join_sources, "part", "shelf") |> FIRST(%).data
 ```
@@ -1417,9 +1468,9 @@ a057 -> send_answer   # Send answer [http_request]
 
 **Outline shows**
 ```text
-    a059 is_damaged [trigger]  FAN-OUT x2
-      a060 open_repair_ticket [http_request]
-        a061 mark_returned [http_request]  JOIN x2  END
+    a059 is_damaged [trigger]  recipe 14
+      a060 open_repair_ticket [http_request]  recipe 6,25
+        a061 mark_returned [http_request]  JOIN x2  END  recipe 6,14,16,25
       (no-match) ^ a061 mark_returned  (JOIN: shown above)
   links: in a060,a059(no-match) | out -
 ```
@@ -1509,15 +1560,15 @@ a061 -> mark_returned   # Mark returned [http_request]
 
 **Outline shows**
 ```text
-    a063 extend_at_desk [group]
+    a063 extend_at_desk [group]  recipe 17
       { inside group a063:
         a063.01 input [group_input]
-          a063.02 get_loan [http_request]
+          a063.02 get_loan [http_request]  recipe 6,25
             a063.03 renewable [trigger]
-              a063.04 extend_loan [http_request]
+              a063.04 extend_loan [http_request]  recipe 6,25
                 a063.05 output [group_output]  END
       }
-      a064 tell_member [http_request]  END
+      a064 tell_member [http_request]  END  recipe 6,25
   payload: {"loan_id": "<<renew_at_desk.body.loan_id>>"}
     payload: {"due": "<<extend_loan.body.due_date>>"}
 ```
@@ -1612,8 +1663,11 @@ a064 -> tell_member   # Tell member [http_request]
 
 **Outline shows**
 ```text
-a066 send_pickup_message  "Send pickup message"  [send_to_story]
+a066 send_pickup_message  "Send pickup message"  [send_to_story]  recipe 18
   calls: STORY.send_member_message - body embedded in this export as s1 (print it with --story s1)
+    s1 reads these keys of the payload: channel, member_id, subject, text
+    sent here but never read by s1: none
+    read by s1 but not sent here (NULL there): none
   payload:
     member_id: <<hold_ready.body.member_id>>
     subject: Your hold is ready
@@ -1678,7 +1732,8 @@ The line in `PLAN.md` for the sub-story is: `s1 | send_member_message | f/librar
 
 **Goes wrong**
 - A `MISSING` stub is written because the sub-story is not ported yet. A sub-story that is in the export is a dependency, not missing logic. Use its planned path.
-- The payload keys are renamed. The sub-story reads `<entry>.body.<key>`, so its flow inputs will have exactly these names.
+- The payload keys are renamed. The sub-story reads `<entry>.body.<key>`, so its flow inputs will have exactly these names. The line `s1 reads these keys of the payload` lists them.
+- A key under `read by s1 but not sent here` is `NULL` in the sub-story. Do not invent a value for it. A key under `sent here but never read` is still passed.
 - The sub-story is copied into every caller. It is one shared flow.
 - The outline says `body NOT in this export`. That is missing logic: use recipe 27.
 - The validator prints `WARN [path-missing]` for this step. That is expected until the sub-story is ported. Do not remove the step.
@@ -1691,9 +1746,9 @@ The line in `PLAN.md` for the sub-story is: `s1 | send_member_message | f/librar
 
 **Outline shows**
 ```text
-    a069 send_welcome [http_request]
-      a070 wait_a_day [event_transform/delay]
-        a071 create_follow_up_task [http_request]  END
+    a069 send_welcome [http_request]  recipe 6,25
+      a070 wait_a_day [event_transform/delay]  recipe 19
+        a071 create_follow_up_task [http_request]  END  recipe 6,25
   seconds: "86400"
 ```
 **Write** `sleep` on the step before the delay. `sleep` waits after its step and holds no worker.
@@ -1775,9 +1830,9 @@ a071 -> create_follow_up_task   # Create follow-up task [http_request]
 
 **Outline shows**
 ```text
-    a073 explode_labels [event_transform/explode]
-      a074 slow_printer [event_transform/throttle]
-        a075 print_spine_label [http_request]  END
+    a073 explode_labels [event_transform/explode]  recipe 13
+      a074 slow_printer [event_transform/throttle]  recipe 20
+        a075 print_spine_label [http_request]  END  recipe 6,25
   capacity: "6"
   interval: minute
 ```
@@ -1834,10 +1889,10 @@ a075 -> print_spine_label   # Print spine label [http_request]
 ```
 **Write, when the throttle is on a side branch:** nothing. Example (outline of w24): the throttle `a088` sits beside the main work `a087`, in front of a state write only.
 ```text
-    a086 explode_returns [event_transform/explode]  FAN-OUT x2
-      a087 request_reshelving [http_request]  END
-      a088 ease_off [event_transform/throttle]
-        a089 save_cursor [http_request]  END
+    a086 explode_returns [event_transform/explode]  FAN-OUT x2  recipe 13,15
+      a087 request_reshelving [http_request]  END  recipe 6,25
+      a088 ease_off [event_transform/throttle]  recipe 20
+        a089 save_cursor [http_request]  END  recipe 24,25
 ```
 The flow writes the state once, after the loop (recipe 24). Nothing is left to slow down. Map the throttle to the step that writes the state.
 
@@ -1854,10 +1909,10 @@ The flow writes the state once, after the loop (recipe 24). Nothing is left to s
 
 **Outline shows**
 ```text
-  a076 get_ready_holds [http_request]  ENTRY: schedule cron */15 * * * * (Europe/Dublin)
-    a077 explode_holds [event_transform/explode]
-      a078 only_new [event_transform/deduplicate]
-        a079 text_member [http_request]  END
+  a076 get_ready_holds [http_request]  ENTRY: schedule cron */15 * * * * (Europe/Dublin)  recipe 1,6,25
+    a077 explode_holds [event_transform/explode]  recipe 13
+      a078 only_new [event_transform/deduplicate]  recipe 21
+        a079 text_member [http_request]  END  recipe 6,25
   path: <<explode_holds.hold.id>>
   lookback: "500"
 ```
@@ -1963,7 +2018,7 @@ a079 -> text_member   # Text member [http_request]
 
 **Outline shows**
 ```text
-a081 email_branch_staff  "Email branch staff"  [send_email]
+a081 email_branch_staff  "Email branch staff"  [send_email]  recipe 22
   recipients: =closure_notice.body.recipients
   reply_to: desk@example.org
   subject: Closure: <<closure_notice.body.branch>> on <<closure_notice.body.day>>
@@ -2044,13 +2099,19 @@ a081 -> email_branch_staff   # Email branch staff [send_email]
 
 **Outline shows**
 ```text
-a083 get_stock  "Get stock"  [http_request]
+a083 get_stock  "Get stock"  [http_request]  recipe 6,23,25
   uses: a082 stock_query, RESOURCE.inventory_api, CREDENTIAL.inventory_key
   url: <<RESOURCE.inventory_api.url>>/stock/<<stock_query.body.isbn>>
   timeout: =RESOURCE.inventory_api.timeout
   payload: {"to": "=GET(RESOURCE.branch_contacts, stock_query.body.branch)", "text": "Copies in stock: <<get_stock.body.copies>>"}
 ```
 **Write** a Windmill resource for connection settings and a non-secret variable holding JSON for a lookup table. The flow reads them at run time. Do not write a stub. Do not invent their content.
+
+Which one:
+- A Tines resource that is an object with named keys, above all connection settings (`RESOURCE.x.url`, `.timeout`, `.retries`): a Windmill **resource**. Pass it as `"$res:<path>"`. The step gets an object.
+- A Tines resource that is one string (a user name, a channel id, one base URL): a non-secret **variable**. Pass it as `"$var:<path>"`. The step gets the string.
+- A Tines resource used as data (a lookup table, a list): a non-secret **variable holding JSON**. Pass it as `"$var:<path>"` and `JSON.parse` it in the step.
+- A secret is never in a non-secret variable: that is a credential (recipe 25).
 ```yaml
 # flow.yaml
 summary: Tell a branch how many copies are in stock
@@ -2110,6 +2171,7 @@ a084 -> notify_branch_stock   # Notify branch [http_request]
 **Goes wrong**
 - A stub that throws `MISSING` is written for the resource. The value is data that the user creates. A stub is only for missing logic (recipe 27).
 - The content is guessed and written into the script (a host, a table of contacts). Only the keys that the story reads are known: `url`, `timeout`.
+- A host is written into the code. A base URL of one of the user's own systems, and any other value that differs per environment, lives in a variable or resource and is listed under Setup. That is also true when the story has the internal host as plain text in a `url:` (recipe 6). Never copy an internal host name from the export into the flow or the notes. A public vendor API host may stay in the code.
 - `"$res:..."` or `"$var:..."` is built inside a longer string. It must be the whole static value.
 - The Tines name is changed. Keep it as the last part of the path: `RESOURCE.inventory_api` is `f/library/inventory_api`.
 
@@ -2121,11 +2183,11 @@ a084 -> notify_branch_stock   # Notify branch [http_request]
 
 **Outline shows**
 ```text
-  a085 get_returns [http_request]  ENTRY: schedule cron */20 * * * * (Europe/Dublin)
-    a086 explode_returns [event_transform/explode]  FAN-OUT x2
-      a087 request_reshelving [http_request]  END
-      a088 ease_off [event_transform/throttle]
-        a089 save_cursor [http_request]  END
+  a085 get_returns [http_request]  ENTRY: schedule cron */20 * * * * (Europe/Dublin)  recipe 1,6,24,25
+    a086 explode_returns [event_transform/explode]  FAN-OUT x2  recipe 13,15
+      a087 request_reshelving [http_request]  END  recipe 6,25
+      a088 ease_off [event_transform/throttle]  recipe 20
+        a089 save_cursor [http_request]  END  recipe 24,25
   url: https://loans.example.org/v1/returns?after=<<RESOURCE.returns_cursor.last_id>>
   url: https://tenant.example.com/api/v1/global_resources/<<INFO.resource.returns_cursor.id>>
   payload: {"value": {"last_id": "=MAX(RESOURCE.returns_cursor.last_id, explode_returns.item.id)"}}
@@ -2248,7 +2310,7 @@ a089 -> save_returns_cursor   # Save cursor [http_request]
 
 **Outline shows**
 ```text
-a091 record_payment  "Record payment"  [http_request]
+a091 record_payment  "Record payment"  [http_request]  recipe 6,23,25
   uses: a090 fine_paid, RESOURCE.payments_api, CREDENTIAL.payments_api
   url: <<RESOURCE.payments_api.url>>/payments
   headers: {"Authorization": "Bearer <<CREDENTIAL.payments_api>>"}
@@ -2325,7 +2387,7 @@ a092 -> record_payment   # Send receipt [http_request]
 
 **Outline shows**
 ```text
-a094 write_audit_entry  "Write audit entry"  [http_request]
+a094 write_audit_entry  "Write audit entry"  [http_request]  recipe 6,25,26
   uses: a093 desk_note, META, META.story, CREDENTIAL.audit_key
   payload: {"note": "<<desk_note.body.note>>", "run": "=STORY_RUN_GUID()", "origin": "=META", "story": "<<META.story.name>>"}
 ```
@@ -2378,7 +2440,7 @@ a094 -> write_audit_entry   # Write audit entry [http_request]
 - `META` or `STORY_RUN_GUID()` is left in the code, or `META` is sent as an empty object.
 - `process.env.WM_JOB_ID` alone is used as the run id. Each step has another job id. Two steps would then report two runs.
 - Values are invented for `META.tenant`, `META.action.id`, `META.event.id`. If nothing reads a key, leave it out. If something reads it and there is no Windmill value, send `null` and say so.
-- `META` goes to a sub-story (`my_meta: =META` in a send-to-story payload). Print the sub-story, find the `my_meta.x` keys it reads, and build the object with those keys.
+- `META` goes to a sub-story (`my_meta: =META` in a send-to-story payload). Print the sub-story (`--story s1`), find the `my_meta.x` paths it reads, and build the object with those keys.
 
 **Notes file**
 - Behaviour differences: `origin` holds `story.name` and `story_run.id` only. The other `META` keys (tenant, team, action, event) are not sent. The run id is a Windmill job id, not a Tines run id.
@@ -2388,7 +2450,7 @@ a094 -> write_audit_entry   # Write audit entry [http_request]
 
 **Outline shows**
 ```text
-a096 short_title  "short title"  [event_transform/message_only]
+a096 short_title  "short title"  [event_transform/message_only]  recipe 11,27
   uses: a095 new_title, RESOURCE.text_tools()
   payload: =RESOURCE.text_tools.shorten(new_title.body.title, 40)
   calls: STORY.print_shelf_label - body NOT in this export (separate story; port or ask for it)
@@ -2463,11 +2525,11 @@ a097 -> print_label_via_story   # Print label via story [send_to_story]
 
 **Outline shows**
 ```text
-a100 matching  [event_transform/message_only]
+a100 matching  [event_transform/message_only]  recipe 11
   payload: =FILTER(get_expired_holds.body.holds, LAMBDA(h, MATCH(h.title, purge_request.body.pattern)))
-a101 explode_targets  "explode targets"  [event_transform/explode]
+a101 explode_targets  "explode targets"  [event_transform/explode]  recipe 13
   path: =DEFAULT(matching, get_expired_holds.body.holds)
-a102 delete_hold  "Delete hold"  [http_request]
+a102 delete_hold  "Delete hold"  [http_request]  recipe 6,25
   outside effect: HTTP DELETE
 ```
 `DEFAULT` treats an empty list as blank. When the pattern matches nothing, the story deletes every expired hold.
@@ -2561,10 +2623,10 @@ a102 -> delete_hold   # Delete hold [http_request]
 
 **Outline shows**
 ```text
-  a103 shelf_sensor [webhook]  ENTRY: webhook  FAN-OUT x3
-    a104 record_reading [http_request]  END
-    a105 debug_copy [event_transform/message_only]  DEAD-END
-    a106 old_alert [http_request]  DISABLED  END
+  a103 shelf_sensor [webhook]  ENTRY: webhook  FAN-OUT x3  recipe 2,15
+    a104 record_reading [http_request]  END  recipe 6,25
+    a105 debug_copy [event_transform/message_only]  DEAD-END  recipe 11,29
+    a106 old_alert [http_request]  DISABLED  END  recipe 29
 NOT TRIGGERED in main (no entry point: never runs unless started by hand; `;` separates unconnected pieces; print with --actions ID)
   a107 event_transform_action
 ```
@@ -2622,7 +2684,203 @@ a106 -> DROPPED: disabled in Tines   # Old alert [http_request]
 **Notes file**
 - Not ported: "`debug copy` (a105): dead end. `Old alert` (a106): disabled in Tines. `Event Transform Action` (a107): not linked to anything."
 
-## 30. What these recipes rely on that is not verified
+## 30. Early exit, then a shared final step
+
+**Outline shows**
+```text
+    a110 has_overdue_items [trigger]  recipe 14
+      a111 suspend_borrowing [http_request]  recipe 6,25
+        a112 write_account_log [http_request]  JOIN x2  END  recipe 6,14,16,25,30
+      (no-match) ^ a112 write_account_log  (JOIN: shown above)
+  payload: {"member_id": "<<account_check.body.member_id>>", "checked": true, "suspension_id": "<<suspend_borrowing.body.id>>"}
+```
+One side skips `a111`. Both sides end in `a112`. `a112` reads the output of `a111`, which is `NULL` on the skipping side.
+
+**Write, option A (use this one here):** a guard inside the script. On the skipping side the script returns early with the same keys. The final step can always read them.
+```yaml
+# flow.yaml
+summary: Suspend borrowing for overdue items and log the check
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  required: [member_id]
+  properties:
+    member_id: {type: string}
+    overdue_count: {type: integer, default: 0}
+value:
+  modules:
+    - id: suspend_borrowing
+      value:
+        type: rawscript
+        language: bun
+        content: "!inline suspend_borrowing.ts"
+        input_transforms:
+          member_id: {type: javascript, expr: "flow_input.member_id"}
+          overdue_count: {type: javascript, expr: "flow_input.overdue_count"}
+          api_token: {type: static, value: "$var:f/library/loans_token"}
+    - id: write_account_log
+      value:
+        type: rawscript
+        language: bun
+        content: "!inline write_account_log.ts"
+        input_transforms:
+          member_id: {type: javascript, expr: "flow_input.member_id"}
+          suspension_id: {type: javascript, expr: "results.suspend_borrowing.suspension_id"}
+          api_token: {type: static, value: "$var:f/library/loans_token"}
+```
+```ts
+// suspend_borrowing.ts
+type Result = { suspended: boolean; suspension_id: string | null };
+
+// a110 has overdue items, a111 Suspend borrowing
+export async function main(member_id: string, overdue_count: number, api_token: string): Promise<Result> {
+  // a110 does not match: nothing to do. Return the SAME keys as the normal path.
+  if (!(Number(overdue_count) > 0)) return { suspended: false, suspension_id: null };
+  const res = await fetch(`https://loans.example.org/v1/members/${encodeURIComponent(member_id)}/suspensions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${api_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "overdue items" }),
+  });
+  if (!res.ok) throw new Error(`suspension returned ${res.status}`);
+  return { suspended: true, suspension_id: (await res.json())?.id ?? null };
+}
+```
+```ts
+// write_account_log.ts
+// a112 Write account log: the shared final step. It runs on both sides, once.
+export async function main(member_id: string, suspension_id: string | null, api_token: string) {
+  const res = await fetch("https://loans.example.org/v1/account-log", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${api_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ member_id, checked: true, suspension_id }),   // null when nothing was suspended, as in Tines
+  });
+  if (!res.ok) throw new Error(`account log returned ${res.status}`);
+  return { logged: true };
+}
+```
+```text
+# workflow: w30
+a109 -> flow_input.member_id, flow_input.overdue_count   # account check [webhook]
+a110 -> suspend_borrowing   # has overdue items [trigger]
+a111 -> suspend_borrowing   # Suspend borrowing [http_request]
+a112 -> write_account_log   # Write account log [http_request]
+```
+**Option B:** a `branchone` with an empty `default`, in place of the step `suspend_borrowing`. Later steps see nothing of it: they cannot read `results.suspend_borrowing` (it is inside the branch), and they must not read `results.suspend_if_overdue` (the result of an empty `default` is not verified). Right when no later step reads anything from the skipped work, or when the skipped work is several steps, a sub-flow or an approval. Wrong here, because `write_account_log` needs `suspension_id`.
+```yaml
+# flow.yaml, option B: replaces the step suspend_borrowing
+    - id: suspend_if_overdue
+      value:
+        type: branchone
+        branches:
+          - summary: Has overdue items
+            expr: "Number(flow_input.overdue_count) > 0"
+            modules:
+              - id: suspend_borrowing
+                value:
+                  type: rawscript
+                  language: bun
+                  content: "!inline suspend_borrowing.ts"
+                  input_transforms:
+                    member_id: {type: javascript, expr: "flow_input.member_id"}
+                    overdue_count: {type: javascript, expr: "flow_input.overdue_count"}
+                    api_token: {type: static, value: "$var:f/library/loans_token"}
+        default: []
+```
+**Option C:** a step setting. Use one of the two lines, not both.
+```yaml
+# flow.yaml, option C: replaces the step suspend_borrowing
+    - id: suspend_borrowing
+      skip_if: {expr: "!(Number(flow_input.overdue_count) > 0)"}
+      stop_after_if: {expr: "result.suspended === false", skip_if_stopped: true}
+      value:
+        type: rawscript
+        language: bun
+        content: "!inline suspend_borrowing.ts"
+        input_transforms:
+          member_id: {type: javascript, expr: "flow_input.member_id"}
+          overdue_count: {type: javascript, expr: "flow_input.overdue_count"}
+          api_token: {type: static, value: "$var:f/library/loans_token"}
+```
+- `skip_if`: the step does not run and the next steps do run. `results.suspend_borrowing` is then not this step's result: it is the result of the step before it. Later steps that read `results.suspend_borrowing.suspension_id` get `undefined` or a wrong value. Right only when no later step reads this step's result. Wrong here.
+- `stop_after_if`: the whole flow ends after this step, as a success. The shared final step does **not** run. Right only for a pure early exit: nothing after it has to run (a trigger near the start with no `(no-match)` link). Wrong here.
+
+**Goes wrong**
+- `skip_if` on the step, and a later step reads its result. Use option A.
+- `results.suspend_borrowing?.suspension_id ?? null` is written to hide the problem. Make the step return the keys on every path instead.
+- The shared final step is copied into both sides. Write it once, after the differing part (recipe 16).
+- The early-exit side returns other keys (`{ skipped: true }`). Return the same keys with `null` values.
+
+**Notes file**
+- Mapping: the trigger is the guard at the top of `suspend_borrowing`.
+- Behaviour differences: none. On the skipping side Tines gave `NULL` for `suspend_borrowing.body.id`; the flow sends `null`.
+- Not verified, if you used option C: what later steps see for a skipped step, and the status of a run ended by `stop_after_if`.
+
+## 31. Link to a Tines page that belongs to another workflow
+
+**Outline shows**
+```text
+a114 answer_with_booking_link  "Answer with booking link"  [http_request]  recipe 6,25,31
+  uses: a113 room_question, PAGE.book_a_room, CREDENTIAL.notify_token
+  payload: {"to": "<<room_question.body.member_id>>", "text": "You can book a study room here: <<PAGE.book_a_room>>"}
+```
+`PAGE.book_a_room` is the URL of the Tines page `book_a_room`. That page is the entry of another workflow (here w04).
+
+**Write** a non-secret variable that holds the URL of whatever replaces that page: the run form of the flow that ports it, or a Windmill app. The user fills it in. It is data, so no stub.
+```yaml
+# flow.yaml
+summary: Answer a room question with the booking link
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  required: [member_id]
+  properties:
+    member_id: {type: string}
+value:
+  modules:
+    - id: answer_with_booking_link
+      value:
+        type: rawscript
+        language: bun
+        content: "!inline answer_with_booking_link.ts"
+        input_transforms:
+          member_id: {type: javascript, expr: "flow_input.member_id"}
+          booking_page_url: {type: static, value: "$var:f/library/book_a_room_url"}
+          api_token: {type: static, value: "$var:f/library/notify_token"}
+```
+```ts
+// answer_with_booking_link.ts
+// a114 Answer with booking link
+export async function main(member_id: string, booking_page_url: string, api_token: string) {
+  // PAGE.book_a_room: the URL comes from a variable. Fail loudly if nobody has set it yet.
+  if (!/^https?:\/\//.test(booking_page_url ?? "")) throw new Error("variable f/library/book_a_room_url does not hold a URL");
+  const res = await fetch("https://notify.example.net/v1/messages", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${api_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ to: member_id, text: `You can book a study room here: ${booking_page_url}` }),
+  });
+  if (!res.ok) throw new Error(`notify returned ${res.status}`);
+  return { status: res.status };
+}
+```
+```text
+# workflow: w31
+a113 -> flow_input.member_id   # room question [webhook]
+a114 -> answer_with_booking_link   # Answer with booking link [http_request]
+```
+**Goes wrong**
+- A Tines URL is written into the code (`https://<tenant>/pages/...`), or the page's `url_identifier` is copied from the export. Never do that. The Tines page will not exist after the port.
+- A Windmill URL is guessed from the flow path. Do not build it. The user knows where the form or the app lives.
+- A `MISSING` stub is written. A URL is data that the user supplies: a variable under Setup.
+- The link is left out, or `PAGE.x` is left in the text.
+- The page belongs to this same workflow and comes later in it. That is an approval step: send `urls.approvalPage` (recipe 5).
+- The URL must differ per run. Then make it a flow input with the variable's value as the documented default.
+
+**Notes file**
+- Setup: variable `f/library/book_a_room_url`, not secret: "URL that replaces the Tines page `Book a room`: the run form of the flow that ports workflow w04, or an app". Was `PAGE.book_a_room`.
+- Depends on: the flow that ports the page's workflow (its line in `PLAN.md`). Until it exists the link has no target.
+- Behaviour differences: the Tines page could be opened by anyone the page allowed. A Windmill run form needs a Windmill login.
+
+## 32. What these recipes rely on that is not verified
 
 Nothing in this file was run on a Windmill instance. Copy these points into "Not verified" in the notes file when a flow uses them.
 
@@ -2638,3 +2896,6 @@ Nothing in this file was run on a Windmill instance. Copy these points into "Not
 - State from `getState` is kept per step and per trigger (recipe 21).
 - Day-of-week numbers in a schedule (recipe 1): Windmill may count week days differently from Tines.
 - Every `if (!res.ok) throw` is a choice: Tines went on after an error response. The recipes fail the step instead.
+- How a pill renders an array or an object (recipe 12). The recipes use JSON.
+- `skip_if` reading `results`, and what `results.<id>` holds for a skipped step (recipe 30). The recipes do not read it.
+- The URL of a flow's run form or of an app (recipe 31). The user supplies it in a variable.
