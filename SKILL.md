@@ -61,9 +61,32 @@ Read the output:
   `tines-to-windmill-skill.zip` to this chat as a file for the code
   environment and send the story again as a file." The zip is on the releases
   page of the skill's repository.
-- **No story file under `FILES:`** (the story is only text in the message):
-  stop. Do not type the JSON into a file yourself: you will corrupt it. Ask
-  the user to attach the story as a `.json` file for the code environment.
+- **No story file under `FILES:`** (the story is only text in the message, or
+  an attached text document such as `pasted-text.txt`): write it into the
+  sandbox yourself, then check it. This is the one case where you handle the
+  raw JSON.
+  1. If the text is cut off (it does not end with `}`), or it is longer than
+     about 60,000 characters, stop and ask the user to attach the story as a
+     `.json` file for the code environment.
+  2. One code call, with the pasted text between the two marker lines, copied
+     character for character. Do not reformat it, do not fix it, do not
+     shorten it, keep every backslash:
+     ```
+     mkdir -p /mnt/data/in
+     cat > /mnt/data/in/story.json <<'TINES_STORY_END'
+     <the pasted text, exactly>
+     TINES_STORY_END
+     python3 "$SKILL_DIR/scripts/check_story.py" /mnt/data/in/story.json
+     ```
+     Set `SKILL_DIR` on the first line to the folder the start block printed.
+  3. `STORY: FAIL`: read where it breaks, write the file again once. If it
+     fails again, stop and ask for the story as a `.json` file.
+  4. `STORY: OK`: compare the printed counts, the first and last action names
+     and the ending with the pasted text. If they match, use
+     `/mnt/data/in/story.json` as `S`. From here on read the story only
+     through the scripts, not from the message.
+  5. Write "The story was copied from pasted text by the model; values were
+     not compared one by one" under Not verified in the notes file.
 - Otherwise continue with the process. Use the `SKILL_DIR` that was printed,
   and the story file's path as `S`. Begin every later code call with
   `cd` to that folder, for example `cd /mnt/data/skills/tines-to-windmill`,
@@ -78,7 +101,8 @@ that same call.
 ## Rules that always apply
 
 1. **Never read the story JSON directly.** It is mostly noise and can be
-   megabytes. Read it only through `scripts/tines_outline.py`.
+   megabytes. Read it only through `scripts/tines_outline.py`. The one
+   exception is writing a pasted story to a file, in the section above.
 2. **One workflow at a time.** One story often holds many independent
    workflows. Each becomes its own flow folder. Finish and validate one before
    starting the next.

@@ -33,8 +33,11 @@ Checked on one self-hosted instance, so treat it as a starting point:
 
 - Turn on Run Code and the skill. The model runs the scripts with the code
   tool; there is no separate shell tool.
-- Attach the story as a `.json` file for the code environment. Do not paste
-  the JSON into the message: the scripts cannot reach it there.
+- Give the story as a `.json` file in the code environment when you can.
+  A story pasted into the message also works for small stories: the model
+  writes it to a file and `scripts/check_story.py` checks that it is complete
+  JSON. That check cannot prove every value was copied exactly, so the notes
+  file says when a story came from a paste.
 - The skill's scripts have to be in the sandbox. LibreChat documents
   `/mnt/data/skills/tines-to-windmill/`. If your sandbox does not get that
   folder, attach `tines-to-windmill-skill.zip` to the chat as well; the first
@@ -76,6 +79,7 @@ git archive --format=zip --prefix=tines-to-windmill/ -o tines-to-windmill-skill.
 | `scripts/tines_fn.py` | Prints one function's catalogue entry |
 | `scripts/ref.py` | Prints one section of a reference |
 | `scripts/check_ts.py` | Syntax-checks the step scripts of a flow |
+| `scripts/check_story.py` | Checks a story file that was written from pasted text |
 | `scripts/fetch_tines_function_docs.py` | Downloads the Tines function reference pages, for checking the catalogue against the source |
 
 The scripts need Python 3 and no extra packages.

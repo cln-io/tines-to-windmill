@@ -913,7 +913,7 @@ class Export:
 
 
 def load_export(path):
-    with open(path, encoding="utf-8") as fh:
+    with open(path, encoding="utf-8-sig") as fh:   # utf-8-sig: a file saved on Windows may start with a BOM
         raw = json.load(fh)
     if isinstance(raw, dict) and "agents" not in raw and isinstance(raw.get("story"), dict):
         raw = raw["story"]
