@@ -45,8 +45,7 @@ actions are copied from the storyboard.
 
 ## Download
 
-A workflow builds `tines-to-windmill-skill.zip` on every push and pull
-request. It holds one folder, `tines-to-windmill/`, with `SKILL.md` inside,
+A workflow builds `tines-to-windmill-skill.zip` on every push to `main`. It holds one folder, `tines-to-windmill/`, with `SKILL.md` inside,
 which is the layout skill uploads such as LibreChat's expect. Get it from the
 run's artifacts on the Actions tab, or from Releases once a `v*` tag exists.
 
