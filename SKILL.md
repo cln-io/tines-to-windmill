@@ -20,8 +20,10 @@ and one TypeScript file per step.
   export or the JSON Tines copies when actions are copied from the storyboard.
   The scripts read both.
 - `OUT` is where you write results. In a coding agent, use the project folder.
-  In a chat sandbox, use `/mnt/data/out`, and when a workflow is finished zip
-  that folder and give the user the zip.
+  In a chat sandbox, use `/mnt/data/out`. When a workflow is finished, zip
+  that folder with Python (a sandbox often has no `zip` program) and give the
+  user the zip:
+  `cd /mnt/data && python3 -m zipfile -c tines-port.zip out`
 
 ## In a chat sandbox, start here
 
@@ -44,7 +46,7 @@ for d in /mnt/data/skills/tines-to-windmill /mnt/data/tines-to-windmill; do
   [ -f "$d/scripts/tines_outline.py" ] && SKILL_DIR="$d"
 done
 if [ -z "$SKILL_DIR" ]; then
-  z=$(ls /mnt/data/*.zip 2>/dev/null | head -n 1)
+  z=$(ls /mnt/data/tines-to-windmill*.zip 2>/dev/null | head -n 1)
   [ -n "$z" ] && python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall('/mnt/data')" "$z"
   [ -f /mnt/data/tines-to-windmill/scripts/tines_outline.py ] && SKILL_DIR=/mnt/data/tines-to-windmill
 fi
