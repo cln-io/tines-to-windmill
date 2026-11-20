@@ -471,14 +471,68 @@ Only on a clear yes:
    for each kind. If asked: a secret variable gets the placeholder
    `SET_ME`, never a real or guessed value; a schedule is created disabled;
    a resource never gets `insecure: true` or a similar switch.
-7. Do **not** run the flow. A run performs the outside effects in your
-   worksheet (requests, emails, commits). Offer a test run only after the
-   user has filled in the setup, list those effects in the offer, and run it
-   only on a clear yes. Then report the result of every step.
+7. Do **not** run the flow in this step.
 
 Tell the user what is in Windmill now: the draft's path, `WINDMILL: MATCH` or
 what differs, the setup lists, and that nothing was deployed, scheduled or
 run. Add the same lines under **Not verified** or **Setup** in the notes file.
+
+### Step 10. Offer a test run, and check that it went well
+
+Only after step 9 ended with `WINDMILL: MATCH`. A run is real: it performs
+the outside effects in your worksheet (requests, emails, commits, state
+writes). So you ask, and you say what will happen.
+
+**Ask, and wait.** Fill in the lists from the worksheet and from step 9:
+
+> The draft is in Windmill and matches the files. Shall I test it there?
+> - **Reads only**: I run the steps that only fetch data (`<step ids>`).
+>   Nothing is sent or changed.
+> - **Full run**: I run the whole draft once. This will really do:
+>   `<numbered outside effects, with the target of each>`.
+> - **No**: I stop here.
+>
+> Still missing in the workspace: `<missing setup items, or "nothing">`.
+> Secrets must hold real values before a run; I cannot see them, so please
+> confirm they are set.
+
+Rules for the run:
+
+- Run nothing while a setup item is missing or the user has not confirmed the
+  secrets. Say what is missing and stop.
+- Run the **draft** as a test (preview) run. Do not deploy it and do not
+  enable the schedule to get a run.
+- "Reads only" means: test those steps one at a time, with the inputs they
+  need. If a step both reads and writes, it is not a read-only step.
+- One run per yes. Never run again without asking again.
+
+When the run has finished, check it. Do not report "it worked" from the
+status alone:
+
+1. Get the result of the run and of **every step**. For each step write one
+   line: step id, success or failure, and what came back in a few words
+   (counts, status codes, sizes). Never print secrets, tokens or full
+   payloads.
+2. Go through the outside-effects list of the worksheet. For each effect
+   name the step result that shows it happened, or say that the run does not
+   show it. A step that succeeded with an empty result (0 items, nothing
+   sent) is a finding, not a success: say so.
+3. Compare with what the story does: the same number of pages or items you
+   would expect, the same targets. Say what you could not compare.
+4. If a step failed, read its error and name the kind:
+   - **Setup**: a variable, resource or permission is missing or wrong. Tell
+     the user what to set. Do not change code.
+   - **The other system**: it answered with an error (4xx, 5xx, timeout).
+     Show the status and the short message. Do not retry in a loop.
+   - **The code**: fix the step file, run steps 7 and 9 again (validator,
+     syntax check, update the draft, `WINDMILL: MATCH`), then ask before
+     running again. At most two fix rounds; then stop and hand over.
+5. Report with one of these first lines, then the per-step lines:
+   `TEST: OK` (every step succeeded and every effect is shown),
+   `TEST: PARTIAL` (it ran, but some effect is not shown or a result is
+   empty), `TEST: FAILED` (a step failed), `TEST: NOT RUN` (and why).
+6. Write the same into the notes file under **Not verified**, replacing
+   "the flow has not been run" with what was run, when, and the result.
 
 Then continue with the next workflow in `PLAN.md`.
 
