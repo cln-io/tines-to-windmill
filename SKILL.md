@@ -280,7 +280,7 @@ If you are unsure how to group actions into steps, read
 | Resource written through the Tines API | State: `setState` if one step both reads and writes it. Otherwise a non-secret variable holding JSON. | 24 |
 | `CREDENTIAL.x` | A secret variable `f/<folder>/<x>`, or a typed resource. Keep the Tines name. If a credential and a resource have the same name, add `_secret` to the credential's path. | 25 |
 | A credential that is only used to call the Tines API | Dropped together with those calls. Say so in the notes. | 25 |
-| `disable_ssl_verification` on an HTTP request | `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun. Keep it only for that host and say so in the notes. | 10 |
+| `disable_ssl_verification` on an HTTP request | Certificate checks stay **on**. Add a `skip_tls_verify` argument that is `false`; only when it is `true` does that one `fetch` get `tls: { rejectUnauthorized: false }` (Bun). Never write `insecure: true` into a resource. Say it under Setup and behaviour differences. | 10 |
 | `STORY_RUN_GUID()`, `META.story_run.id` | `process.env.WM_ROOT_FLOW_JOB_ID ?? process.env.WM_FLOW_JOB_ID ?? process.env.WM_JOB_ID`. `WM_JOB_ID` alone changes at every step. Say so in the notes. | 26 |
 | Calls to the Tines API for anything else | No equivalent. Stub it and report it. | 27 |
 | An early exit, then a final step that both paths share | A guard inside the script that returns the same keys, or a `branchone` with an empty default. The recipe says when to use which. | 30 |
@@ -296,6 +296,11 @@ Design rules:
 - When behaviour must change because Windmill has no exact equivalent, pick the
   safer behaviour and write it down for the notes file.
 - Do not copy dead ends. Do not add features the story does not have.
+- Port what the story does today, not what it looks like it was meant to do.
+  If a link is missing so that part of the story never runs, that part stays
+  out of the flow. Do not connect it "to restore the intended behaviour":
+  that would make the flow send or change things the story never did. Report
+  it to the user and under Not ported in the notes, and let them decide.
 - If the story has a bug that destroys or sends something by accident (for
   example a fallback that deletes everything when a filter matches nothing),
   do not port the bug. Keep the safe behaviour, list it under behaviour

@@ -1634,6 +1634,15 @@ class Validator:
         if not code.strip():
             self.error("rawscript", w, "script content is empty.", "write the script with an exported `main` function")
             return
+        if "NODE_TLS_REJECT_UNAUTHORIZED" in code:
+            self.warn("tls", w, "the script switches certificate checks off for every request (NODE_TLS_REJECT_UNAUTHORIZED).",
+                      "remove it; see recipe 10 for the one request that needs it")
+        for line in code.splitlines():
+            if re.search(r"rejectUnauthorized\s*:\s*false", line) and "?" not in line.split("rejectUnauthorized")[0]:
+                self.warn("tls", w, "TLS certificate checks are switched off unconditionally (`rejectUnauthorized: false`).",
+                          "keep checks on by default: put it behind a `skip_tls_verify` argument that is false "
+                          "unless the user sets it (recipe 10), and say so under Setup in the notes")
+                break
         if lang is None:
             return
         info = parse_main(code, lang, entry)
@@ -2352,9 +2361,9 @@ def main(argv=None):
     print("")
     if failed:
         word, tail = "FAIL", ""
-    elif n_behaviour:
+    elif n_behaviour or any("[tls]" in line for line in v.warnings):
         word = "REVIEW"
-        tail = (" - not finished: fix each behaviour warning, or explain it in one sentence in the notes file")
+        tail = (" - not finished: fix each behaviour or tls warning, or explain it in one sentence in the notes file")
     else:
         word = "OK"
         tail = (" (structure and references only: this does not prove the flow runs or reproduces "

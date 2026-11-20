@@ -862,7 +862,7 @@ a029 -> share_export   # Share export [http_request]
   disable_ssl_verification: true
   rules: [{"type": "field!=value", "value": "ok", "path": "<<get_kiosk_status.body.state>>"}]
 ```
-**Write** `tls: { rejectUnauthorized: false }` in the options of that one `fetch`. Nowhere else.
+**Write** the request with certificate checks **on**, and a `skip_tls_verify` argument that is `false` in `flow.yaml`. Only when the user sets it to `true` does that one `fetch` get `tls: { rejectUnauthorized: false }`. The story switched the check off; the port does not copy that silently, because the request usually carries a token.
 ```yaml
 # flow.yaml
 summary: Report a kiosk that is not ok
@@ -879,6 +879,7 @@ value:
         content: "!inline check_kiosk.ts"
         input_transforms:
           facilities_token: {type: static, value: "$var:f/library/facilities_token"}
+          skip_tls_verify: {type: static, value: false}   # the story had disable_ssl_verification: true
 ```
 ```yaml
 # f/library/check_kiosk.schedule.yaml
@@ -892,10 +893,11 @@ args: {}
 ```ts
 // check_kiosk.ts
 // a030 Get kiosk status, a031 not ok, a032 Report kiosk
-export async function main(facilities_token: string) {
+export async function main(facilities_token: string, skip_tls_verify: boolean = false) {
   const res = await fetch("https://kiosk.harbour.example.net:8443/status", {
     signal: AbortSignal.timeout(10_000),          // timeout: "10"
-    tls: { rejectUnauthorized: false },           // disable_ssl_verification: true. Bun only. This host only.
+    // disable_ssl_verification: true in the story. Off here unless skip_tls_verify is set. Bun only. This host only.
+    ...(skip_tls_verify ? { tls: { rejectUnauthorized: false } } : {}),
   });
   const state: string | null = res.ok ? ((await res.json())?.state ?? null) : null;
   if (state === "ok") return { state, reported: false };          // a031 does not match: nothing to do
@@ -915,13 +917,14 @@ a031 -> check_kiosk   # not ok [trigger]
 a032 -> check_kiosk   # Report kiosk [http_request]
 ```
 **Goes wrong**
-- TLS checks are switched off for the whole script (`NODE_TLS_REJECT_UNAUTHORIZED=0`) or for every request. Do it for the one request that has the option.
+- `tls: { rejectUnauthorized: false }` is written unconditionally, or stored as `insecure: true` in a resource the flow creates. Checks stay on unless the user switches them off.
+- TLS checks are switched off for the whole script (`NODE_TLS_REJECT_UNAUTHORIZED=0`) or for every request. The switch covers the one request that has the option.
 - `language: deno` or a Node `https.Agent`. The `tls` option of `fetch` works in `language: bun` only.
 - The option comes from a resource (`disable_ssl_verification: =RESOURCE.x.disable_ssl_verification`). Then read the flag from that resource: `...(api.disable_ssl_verification ? { tls: { rejectUnauthorized: false } } : {})`.
 
 **Notes file**
-- Setup: the secret variable `f/library/facilities_token`. The schedule file. Tell the user that adding the kiosk's certificate authority to the worker would be safer than switching the check off.
-- Behaviour differences: TLS verification is off for `kiosk.harbour.example.net` only, as in the story. A failed status request is reported as state `null`, as in the story.
+- Setup: the secret variable `f/library/facilities_token`. The schedule file. `skip_tls_verify` is `false`: if the kiosk request fails on its certificate, add the kiosk's certificate authority to the Windmill workers; setting `skip_tls_verify` to `true` is the last resort.
+- Behaviour differences: deliberate. The story had TLS verification off for `kiosk.harbour.example.net`; the flow keeps it on unless `skip_tls_verify` is set. A failed status request is reported as state `null`, as in the story.
 - Not verified: the `tls` option of Bun's `fetch` was not run.
 
 ## 11. Message-only transform
@@ -2887,7 +2890,7 @@ Nothing in this file was run on a Windmill instance. Copy these points into "Not
 - Approval steps (recipe 5): how the approval page shows the step result; what `approvers` holds; that `resume` holds the form values.
 - Preprocessor (recipe 3): the spelling of header keys in `event.headers`; that query values are in `event.query`; the URL of an HTTP route.
 - `WM_EMAIL` as the user who runs a flow (recipe 4). `WM_ROOT_FLOW_JOB_ID`, `WM_FLOW_JOB_ID`, `WM_JOB_ID` (recipe 26).
-- `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun (recipe 10). `AbortSignal.timeout` as the request timeout (recipes 8, 10, 23).
+- `fetch(url, { tls: { rejectUnauthorized: false } })` in Bun, behind `skip_tls_verify` (recipe 10). `AbortSignal.timeout` as the request timeout (recipes 8, 10, 23).
 - `sleep` on a step inside a loop (recipe 20) and a `sleep` of many hours (recipe 19).
 - The entry of a failed iteration or branch in a result list: `null` or `{error: ...}`. The recipes accept both (recipes 13, 15).
 - The result of a `branchone` whose empty `default` ran. The recipes never read it (recipes 16, 17).
