@@ -1908,7 +1908,16 @@ def coverage(v, story_path, flow_dir, map_arg, out, workflow=None):
                 out.append("  NOREASON %s" % desc)
             continue
         bad = []
-        targets = [x.strip() for x in re.split(r"[,\s]+", target) if x.strip()]
+        # A note in brackets after the target is allowed: `a05 -> fetch_items (with the sleep)`.
+        plain = re.sub(r"\s*[(\[].*$", "", target).strip()
+        if not plain:
+            todo.append(aid)
+            out.append("  TODO     %s  (the line has only a note: `%s`)" % (desc, target[:60]))
+            continue
+        if plain.upper() == "SCHEDULE":
+            by_target.setdefault("SCHEDULE (the schedule file)", []).append(aid)
+            continue
+        targets = [x.strip() for x in re.split(r"[,\s]+", plain) if x.strip()]
         for t in targets:
             if t.startswith("flow_input."):
                 if t.split(".", 1)[1].split(".")[0] not in props:
@@ -1920,7 +1929,9 @@ def coverage(v, story_path, flow_dir, map_arg, out, workflow=None):
             out.append("  BADREF   %s -> %s" % (desc, target))
             for t, why in bad:
                 v.error("coverage", "Tines action %s" % desc, "maps to `%s`, which %s (map line %d)" % (t, why, n),
-                        "use an existing module id, `flow_input.<name>`, or `DROPPED: <reason>`")
+                        "the target must be exactly one of: a module id of this flow.yaml, `flow_input.<name>`, "
+                        "`SCHEDULE`, or `DROPPED: <reason>`. A file name or a sentence is not a target; put "
+                        "explanations after ` # `")
         else:
             for t in targets:
                 by_target.setdefault(t, []).append(aid)

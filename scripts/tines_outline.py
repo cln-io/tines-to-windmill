@@ -1768,6 +1768,7 @@ def render_map_template(export, selector, story, ids):
         "#   module_a, module_b       several module ids, comma separated",
         "#   flow_input.name          the action became a flow input",
         "#   flow_input.a, flow_input.b, module_id   several inputs and/or modules (a page with many fields)",
+        "#   SCHEDULE                 the action only starts the workflow on a schedule; the schedule file does that",
         "#   DROPPED: reason          deliberately not translated (say why; if the action wrote something",
         "#                            outside the story, say why that is no longer needed)",
         "# Do not delete lines. Check with: validate_flow.py <dir.flow> --story <story.json>",

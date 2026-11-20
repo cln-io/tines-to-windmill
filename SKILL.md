@@ -138,6 +138,9 @@ that same call.
 9. **You are done with a workflow only when** `scripts/validate_flow.py` ends
    with `RESULT: OK`, or with `RESULT: REVIEW` and every open warning is
    explained in the notes, and you have written the notes file from step 8.
+   While the last line is `RESULT: FAIL`, do not stop and do not hand the
+   errors to the user: fix them and run the validator again. Stop and ask
+   only when the same error is still there after three tries.
 
 ## How to read the references
 
@@ -248,6 +251,11 @@ Ask the user for `<folder>` if they did not give one. If the project has a
 The map has one line per action, such as `a01 -> TODO   # fetch orders [http_request]`.
 You fill it in at step 6. Never delete a line.
 
+The target after `->` is exactly one of: a module id of this `flow.yaml`,
+`flow_input.<name>`, `SCHEDULE` (the action only starts the workflow on a
+schedule), or `DROPPED: <reason>`. A file name or a sentence is not a target.
+Explanations go after ` # `.
+
 ### Step 4. Collect what the export does not contain
 
 Before writing code, list what is missing for this workflow and ask the user
@@ -324,6 +332,11 @@ Design rules:
 - When behaviour must change because Windmill has no exact equivalent, pick the
   safer behaviour and write it down for the notes file.
 - Do not copy dead ends. Do not add features the story does not have.
+- One workflow is one flow folder. Do not split a workflow into a main flow
+  and a subflow because two branches do similar work: give each branch its
+  own step and let both steps use the same code. A second flow is right only
+  for a Tines story that is called by other stories (recipe 18) or a group
+  that several workflows use (recipe 17).
 - Port what the story does today, not what it looks like it was meant to do.
   If a link is missing so that part of the story never runs, that part stays
   out of the flow. Do not connect it "to restore the intended behaviour":
