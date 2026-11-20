@@ -548,3 +548,23 @@ Neither the docs nor the two exports settle these. Confirm with the user or the 
 6. Pages: `visibility` values other than `world` / `tenant`; that `story_run` is the UI's "Move to next page"; output shape of field types not seen in the export.
 7. Story keys: mapping of `api_entry_action_guids`, `api_exit_action_guids`, `synchronous_webhooks_enabled` to "Workflows as APIs".
 8. Extras file: LLMAgent key names, RecordAgent output, Case and MCP server export shapes.
+
+## Copied actions (clipboard JSON)
+
+Copying actions from the storyboard gives JSON that holds the same things as
+an export with different spelling. `scripts/tines_outline.py` converts it when
+it loads the file, so the outline looks the same and you do not handle this
+yourself. Seen in one real sample:
+
+| Export | Copied actions |
+|---|---|
+| `standard_lib_version`, `diagram_notes` | `standardLibVersion`, `diagramNotes` |
+| `"type": "Agents::HTTPRequestAgent"` | `"type": "httpRequest"` (also `eventTransformation`, `trigger`, `group`) |
+| `options` is an object | `options` is a string holding JSON |
+| links: `source`, `receiver`, `"link_type": "secondary"` | links: `sourceIdentifier`, `receiverIdentifier` (index, as a number or a string), `"linkType": "NO_MATCH"` |
+| a group's actions in `group.agents` | in `group.actions` |
+| positions in `diagram_layout` | `position` on each action |
+
+There is no story name, no `guid`, and no pages, integrations or
+send-to-story settings. The short type names of other action kinds (email,
+webhook, send to story, group input and output) are **(unverified)**.

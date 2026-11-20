@@ -27,6 +27,22 @@ python3 scripts/tines_outline.py examples/cold-chain/story.json --index
 python3 scripts/validate_flow.py examples/cold-chain/f/cold_chain/review_excursions.flow --story examples/cold-chain/story.json
 ```
 
+## In LibreChat
+
+Checked on one self-hosted instance, so treat it as a starting point:
+
+- Turn on Run Code and the skill. The model runs the scripts with the code
+  tool; there is no separate shell tool.
+- Attach the story as a `.json` file for the code environment. Do not paste
+  the JSON into the message: the scripts cannot reach it there.
+- The skill's scripts have to be in the sandbox. LibreChat documents
+  `/mnt/data/skills/tines-to-windmill/`. If your sandbox does not get that
+  folder, attach `tines-to-windmill-skill.zip` to the chat as well; the first
+  step in `SKILL.md` unpacks it.
+
+The scripts accept a story export and also the JSON that Tines copies when
+actions are copied from the storyboard.
+
 ## Download
 
 A workflow builds `tines-to-windmill-skill.zip` on every push and pull

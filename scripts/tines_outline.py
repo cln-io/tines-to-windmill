@@ -919,7 +919,84 @@ def load_export(path):
         raw = raw["story"]
     if not isinstance(raw, dict) or not isinstance(raw.get("agents"), list):
         raise ValueError("not a Tines story export (no top-level 'agents' list)")
+    if is_copied_actions(raw):
+        raw = normalize_copied(raw)
     return Export(raw)
+
+
+# --------------------------------------------------------------------------
+# Copied actions (the JSON Tines puts on the clipboard when actions are copied
+# from the storyboard). Same content as an export, different spelling:
+# camelCase keys, short type names, options as a JSON string, links that use
+# sourceIdentifier / receiverIdentifier, groups under group.actions.
+# Seen in one real sample; type names other than eventTransformation,
+# httpRequest, trigger and group are guesses.
+# --------------------------------------------------------------------------
+
+COPIED_TYPES = {
+    "eventtransformation": "EventTransformation", "httprequest": "HTTPRequest",
+    "trigger": "Trigger", "group": "Group", "groupinput": "GroupInput",
+    "groupoutput": "GroupOutput", "email": "Email", "sendemail": "Email",
+    "webhook": "Webhook", "sendtostory": "SendToStory", "imap": "IMAP",
+    "form": "Form", "page": "Form", "llm": "LLM", "ai": "LLM",
+}
+
+
+def is_copied_actions(raw):
+    if "standardLibVersion" in raw or "actionRuntimeVersion" in raw:
+        return True
+    if any(isinstance(l, dict) and "sourceIdentifier" in l for l in raw.get("links") or []):
+        return True
+    return any(isinstance(a, dict) and isinstance(a.get("type"), str)
+               and not a["type"].startswith("Agents::") for a in raw["agents"])
+
+
+def normalize_copied(raw, counter=None, layout=None):
+    top = counter is None
+    counter = counter if counter is not None else [0]
+    layout = layout if layout is not None else {}
+    agents = []
+    for a in raw.get("agents") or raw.get("actions") or []:
+        a = dict(a)
+        kind = str(a.get("type") or "")
+        if not kind.startswith("Agents::"):
+            name = COPIED_TYPES.get(kind.lower().replace("_", ""), kind[:1].upper() + kind[1:])
+            a["type"] = "Agents::%sAgent" % name
+        if isinstance(a.get("options"), str):
+            try:
+                a["options"] = json.loads(a["options"])
+            except ValueError:
+                a["options"] = {"unparsed_options": a["options"]}
+        if not a.get("guid"):
+            counter[0] += 1
+            a["guid"] = "copied%04d" % counter[0]
+        pos = a.get("position")
+        if isinstance(pos, dict) and "x" in pos and "y" in pos:
+            layout[a["guid"]] = [pos["x"], pos["y"]]
+        if isinstance(a.get("group"), dict):
+            a["group"] = normalize_copied(a["group"], counter, layout)
+        agents.append(a)
+    links = []
+    for l in raw.get("links") or []:
+        try:
+            s = int(l["sourceIdentifier"] if "sourceIdentifier" in l else l["source"])
+            r = int(l["receiverIdentifier"] if "receiverIdentifier" in l else l["receiver"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("copied actions: cannot read link %r" % (l,))
+        if not (0 <= s < len(agents) and 0 <= r < len(agents)):
+            raise ValueError("copied actions: link %r points outside the %d actions" % (l, len(agents)))
+        out = {"source": s, "receiver": r}
+        kind = l.get("linkType") or l.get("link_type")
+        if kind in ("NO_MATCH", "secondary"):
+            out["link_type"] = "secondary"
+        links.append(out)
+    story = {k: v for k, v in raw.items() if k not in ("agents", "actions", "links")}
+    story["agents"], story["links"] = agents, links
+    story.setdefault("name", "copied actions" if top else "")
+    story.setdefault("diagram_notes", raw.get("diagramNotes") or raw.get("annotations") or [])
+    if top:
+        story["diagram_layout"] = json.dumps(layout)
+    return story
 
 
 # --------------------------------------------------------------------------

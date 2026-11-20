@@ -2,7 +2,7 @@
 name: tines-to-windmill
 description: Translate an exported Tines story (JSON) into one or more Windmill flows (flow.yaml plus TypeScript step files). Use when the user gives a Tines story export and wants it ported, migrated or rewritten for Windmill.
 allowed-tools: ["execute_code"]
-compatibility: Needs a way to run Python 3 and to write files (a code sandbox or a shell).
+compatibility: Needs a way to run Python 3 and to write files (a code sandbox or a shell), with this skill's files and the story file present there.
 ---
 
 # Translate a Tines story into Windmill flows
@@ -13,18 +13,67 @@ and one TypeScript file per step.
 
 ## Where things are
 
-- `SKILL_DIR` is this skill's folder. In a chat sandbox it is usually
-  `/mnt/data/skills/tines-to-windmill`. In a coding agent it is the folder
-  this file is in. Paths such as `scripts/...` and `references/...` below are
-  inside `SKILL_DIR`.
-- `S` is the path of the story export the user gave you. In a chat sandbox,
-  uploaded files are usually under `/mnt/data`. If you cannot find it, list
-  that folder. If there is no export, ask the user to attach one.
+- `SKILL_DIR` is this skill's folder. In a coding agent it is the folder this
+  file is in. In a chat sandbox, find it with the start block below. Paths
+  such as `scripts/...` and `references/...` are inside `SKILL_DIR`.
+- `S` is the path of the story file the user gave you. It is either a story
+  export or the JSON Tines copies when actions are copied from the storyboard.
+  The scripts read both.
 - `OUT` is where you write results. In a coding agent, use the project folder.
   In a chat sandbox, use `/mnt/data/out`, and when a workflow is finished zip
   that folder and give the user the zip.
-- You need to run Python 3 scripts. If you have no tool that runs code, stop
-  and tell the user that this skill needs code execution turned on.
+
+## In a chat sandbox, start here
+
+Skip this section in a coding agent that has a shell and the skill folder.
+
+- You run commands with the **code tool** (the one that runs code; it accepts
+  bash and Python). There is **no** tool named `bash`, `shell` or `terminal`:
+  do not call one. Every command line in this file goes into the code tool as
+  bash.
+- The scripts must **run**. Do not open a script with a file-reading tool to
+  understand it or to copy it: the scripts are large and reading one fills
+  your context. Reading `SKILL.md` and reference sections is fine.
+- Do not call tools of other systems (for example a Windmill connection)
+  unless the user asked for that.
+
+Your first code call is this block, exactly:
+
+```
+for d in /mnt/data/skills/tines-to-windmill /mnt/data/tines-to-windmill; do
+  [ -f "$d/scripts/tines_outline.py" ] && SKILL_DIR="$d"
+done
+if [ -z "$SKILL_DIR" ]; then
+  z=$(ls /mnt/data/*.zip 2>/dev/null | head -n 1)
+  [ -n "$z" ] && python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall('/mnt/data')" "$z"
+  [ -f /mnt/data/tines-to-windmill/scripts/tines_outline.py ] && SKILL_DIR=/mnt/data/tines-to-windmill
+fi
+echo "SKILL_DIR=${SKILL_DIR:-MISSING}"
+echo "FILES:"; ls -la /mnt/data
+python3 --version
+```
+
+Read the output:
+
+- **`SKILL_DIR=MISSING`**: the skill's scripts are not in the sandbox. Stop.
+  Do not port the story by hand and do not rebuild the scripts. Tell the user:
+  "The skill's scripts are not in the code sandbox. Please attach
+  `tines-to-windmill-skill.zip` to this chat as a file for the code
+  environment and send the story again as a file." The zip is on the releases
+  page of the skill's repository.
+- **No story file under `FILES:`** (the story is only text in the message):
+  stop. Do not type the JSON into a file yourself: you will corrupt it. Ask
+  the user to attach the story as a `.json` file for the code environment.
+- Otherwise continue with the process. Use the `SKILL_DIR` that was printed,
+  and the story file's path as `S`. Begin every later code call with
+  `cd` to that folder, for example `cd /mnt/data/skills/tines-to-windmill`,
+  so that `python3 scripts/...` works as written.
+
+Files may not survive from one code call to the next. If a later call says
+that `SKILL_DIR`, `S` or `OUT` is gone, run the start block again and tell the
+user that the sandbox does not keep files: in that case do each workflow's
+writing and validating inside one code call, and give the user the zip from
+that same call.
 
 ## Rules that always apply
 
@@ -53,7 +102,8 @@ and one TypeScript file per step.
    belongs to one environment goes into a variable or resource and is listed
    under Setup in the notes. The host of a public vendor API may stay in the
    code.
-7. **Never deploy.** Do not run `wmill sync push` or `wmill flow push` unless
+7. **Never deploy.** Do not run `wmill sync push` or `wmill flow push`, and do
+   not create or change anything in Windmill through any other tool, unless
    the user asks.
 8. **Code goes in separate files.** In `flow.yaml` write
    `content: "!inline <step_id>.ts"`, with the quotes. Do not embed code in YAML.
