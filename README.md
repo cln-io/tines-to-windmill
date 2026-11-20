@@ -79,6 +79,7 @@ git archive --format=zip --prefix=tines-to-windmill/ -o tines-to-windmill-skill.
 | `scripts/tines_fn.py` | Prints one function's catalogue entry |
 | `scripts/ref.py` | Prints one section of a reference |
 | `scripts/check_ts.py` | Syntax-checks the step scripts of a flow |
+| `scripts/bundle_flow.py` | One JSON file of a flow folder, and a check of what Windmill gives back |
 | `scripts/check_story.py` | Checks a story file that was written from pasted text |
 | `scripts/fetch_tines_function_docs.py` | Downloads the Tines function reference pages, for checking the catalogue against the source |
 

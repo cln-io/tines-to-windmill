@@ -37,7 +37,8 @@ Skip this section in a coding agent that has a shell and the skill folder.
   understand it or to copy it: the scripts are large and reading one fills
   your context. Reading `SKILL.md` and reference sections is fine.
 - Do not call tools of other systems (for example a Windmill connection)
-  unless the user asked for that.
+  while you port. The one place they are used is step 9, after the user said
+  yes.
 
 Your first code call is this block, exactly:
 
@@ -130,7 +131,8 @@ that same call.
    code.
 7. **Never deploy.** Do not run `wmill sync push` or `wmill flow push`, and do
    not create or change anything in Windmill through any other tool, unless
-   the user asks.
+   the user asks. Step 9 is how you ask: it creates a draft only, never a
+   deployed flow, an enabled schedule, a run or a secret.
 8. **Code goes in separate files.** In `flow.yaml` write
    `content: "!inline <step_id>.ts"`, with the quotes. Do not embed code in YAML.
 9. **You are done with a workflow only when** `scripts/validate_flow.py` ends
@@ -430,8 +432,55 @@ Write `<flow_name>.NOTES.md` next to the flow folder (start from
 5. **Not verified.** State plainly that the flow has not been run, plus any
    formula or action whose Tines behaviour you were not sure of.
 
-Then tell the user which workflow is finished, list the open questions, and
-continue with the next workflow in `PLAN.md`.
+Then tell the user which workflow is finished and list the open questions.
+
+### Step 9. Offer to put the flow into Windmill as a draft
+
+Do this step only when you have tools that reach Windmill (a Windmill
+connection). Without them, tell the user the flow is ready as files and how to
+push it (`wmill sync push`), and continue with the next workflow.
+
+**Ask first, every time.** After step 8, ask the user this, and wait:
+
+> The flow passed the checks. Shall I put it into Windmill as a **draft** so
+> you can look at it and test it there? I will not deploy it, not enable the
+> schedule, not run it, and not write any secret. Which workspace and path?
+> (default: `<path from the flow folder>`)
+
+Only on a clear yes:
+
+1. Bundle the flow, so you do not retype any code:
+   `python3 scripts/bundle_flow.py OUT/f/<folder>/<flow_name>.flow`
+   It writes `<flow_name>.bundle.json` and prints one line per step.
+2. Read what is already at that path. If a flow or draft exists there, stop
+   and ask the user whether to replace it. Never overwrite without that answer.
+3. Create the flow as a **draft** with the content of the bundle file
+   (`path`, `summary`, `description`, `schema`, `value`). If the connection
+   can only create deployed flows, stop and say so: do not deploy.
+4. Read the flow back from Windmill, save the answer exactly as returned to
+   `OUT/readback.json`, and compare:
+   `python3 scripts/bundle_flow.py OUT/f/<folder>/<flow_name>.flow --check OUT/readback.json`
+   - `WINDMILL: MATCH`: the draft holds the same steps, code and inputs.
+   - `WINDMILL: DIFFERENT`: fix what it lists (usually a step was cut off or
+     an input was lost), update the draft, check again. After two failed
+     tries, stop and tell the user what differs.
+5. Check the setup, by name only. For every variable and resource under Setup
+   in the notes, look whether it exists in the workspace. Never read, print or
+   write a secret value. Report three lists: exists, missing, could not check.
+6. Do **not** create variables, resources or schedules unless the user asks
+   for each kind. If asked: a secret variable gets the placeholder
+   `SET_ME`, never a real or guessed value; a schedule is created disabled;
+   a resource never gets `insecure: true` or a similar switch.
+7. Do **not** run the flow. A run performs the outside effects in your
+   worksheet (requests, emails, commits). Offer a test run only after the
+   user has filled in the setup, list those effects in the offer, and run it
+   only on a clear yes. Then report the result of every step.
+
+Tell the user what is in Windmill now: the draft's path, `WINDMILL: MATCH` or
+what differs, the setup lists, and that nothing was deployed, scheduled or
+run. Add the same lines under **Not verified** or **Setup** in the notes file.
+
+Then continue with the next workflow in `PLAN.md`.
 
 ## Common mistakes
 
