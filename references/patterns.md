@@ -88,7 +88,7 @@ a002 request_shelf_check  "Request shelf check"  [http_request]  recipe 6,25
 # f/library/shelf_check.schedule.yaml
 schedule: "0 0 7 * * 1-5"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/shelf_check
 is_flow: true
 args: {}
@@ -97,7 +97,7 @@ args: {}
 # f/library/shelf_check_2.schedule.yaml
 schedule: "0 30 13 * * 6"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/shelf_check
 is_flow: true
 args: {}
@@ -550,7 +550,7 @@ value:
 # f/library/publish_arrivals.schedule.yaml
 schedule: "0 */30 * * * *"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/publish_arrivals
 is_flow: true
 args: {}
@@ -793,7 +793,7 @@ value:
 # f/library/export_catalogue.schedule.yaml
 schedule: "0 0 2 * * 0"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/export_catalogue
 is_flow: true
 args: {}
@@ -885,7 +885,7 @@ value:
 # f/library/check_kiosk.schedule.yaml
 schedule: "0 */10 * * * *"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/check_kiosk
 is_flow: true
 args: {}
@@ -1956,7 +1956,7 @@ value:
 # f/library/text_ready_holds.schedule.yaml
 schedule: "0 */15 * * * *"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/text_ready_holds
 is_flow: true
 args: {}
@@ -2241,7 +2241,7 @@ value:
 # f/library/reshelve_returns.schedule.yaml
 schedule: "0 */20 * * * *"
 timezone: Europe/Dublin
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/library/reshelve_returns
 is_flow: true
 args: {}

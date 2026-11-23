@@ -42,7 +42,8 @@ One entry per difference: the Tines action and its id, what the story did, what 
 
 ## 5. Not verified
 
-- The flow has not been run.
+- The flow has not been run. (After a test run in step 10: replace this line with what was run,
+  when, and the TEST result. Do not leave both.)
 - The TypeScript files were checked for syntax only (say with which tool, or say that they were not checked).
 - Each formula or action whose Tines behaviour you were not sure of, and how you read it.
 - Each pill that puts an array or an object into a request body or a message: Tines does not specify the rendering; the flow sends JSON.

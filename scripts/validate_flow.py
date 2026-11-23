@@ -2352,6 +2352,10 @@ def main(argv=None):
               "reported as parse errors; all checks otherwise run as usual.")
     v = Validator(data, flow_dir, None if loader == "JSON" else text)
     v.run()
+    if v.flow_path and len(v.flow_path.split("/")) < 3:
+        v.error("layout", flow_dir, "the flow's workspace path would be `%s`, which has no folder: Windmill paths are "
+                "f/<folder>/<name> or u/<user>/<name>." % v.flow_path,
+                "move the flow folder to OUT/f/<folder>/%s.flow (and its notes and schedule files next to it)" % v.flow_name)
     check_schedules(v, flow_dir, args.builtin_yaml)
     extra, behaviour_lines, cov = [], [], None
     if args.story:

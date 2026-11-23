@@ -457,7 +457,9 @@ Do this step only when you have tools that reach Windmill (a Windmill
 connection). Without them, tell the user the flow is ready as files and how to
 push it (`wmill sync push`), and continue with the next workflow.
 
-**Ask first, every time.** After step 8, ask the user this, and wait:
+**Ask first, every time.** After step 8, ask the user this, and wait. A
+general go-ahead given earlier ("go ahead", "don't ask me until it passes")
+is not a yes to this question: only an answer to it is.
 
 > The flow passed the checks. Shall I put it into Windmill as a **draft** so
 > you can look at it and test it there? I will not deploy it, not enable the
@@ -486,6 +488,11 @@ Only on a clear yes:
      folder with itself and proves nothing. If the answer was cut off because
      the flow is large, say "the draft is saved but could not be compared:
      the read-back was too long", and ask the user to open it in Windmill.
+   - The Windmill tool's answer arrives in the chat, so you copy it into
+     `readback.json` with `create_file`. If that copy does not parse, or is
+     cut off, you may try once more. Never repair it from the bundle or your
+     own files. After the second failure, tell the user "the draft is saved
+     but could not be compared" and continue with point 5.
    - A large flow (more than about 20 KB of bundle) may not fit in one tool
      call. If the save call fails because the arguments are not valid JSON,
      try once more; after that, stop and tell the user to push the folder

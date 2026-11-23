@@ -153,6 +153,10 @@ def main(argv):
     except (OSError, validate_flow.YamlError) as exc:
         print("BUNDLE: FAIL - %s" % exc)
         return 1
+    if len(local["path"].split("/")) < 3:
+        print("BUNDLE: FAIL - workspace path `%s` has no folder: Windmill paths are f/<folder>/<name>. "
+              "Move the flow folder to OUT/f/<folder>/." % local["path"])
+        return 1
     mine = fingerprint(local)
     if len(argv) == 2:
         out = os.path.join(os.path.dirname(os.path.abspath(flow_dir)), flow_path(flow_dir).split("/")[-1] + ".bundle.json")

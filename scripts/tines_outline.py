@@ -655,8 +655,13 @@ class Story:
 
     def _sources(self, a):
         """Every string of an action that may hold formulas."""
-        yield from iter_strings(a["options"] if a["type"] != "page" else
-                                {k: v for k, v in a["options"].items() if k != "page_logo"})
+        opts = a["options"] if a["type"] != "page" else {k: v for k, v in a["options"].items() if k != "page_logo"}
+        if isinstance(opts.get("rules"), list):
+            # A formula rule keeps its formula in `path`; Tines ignores its `value` (often a leftover).
+            opts = dict(opts, rules=[{k: v for k, v in r.items() if k != "value"}
+                                     if isinstance(r, dict) and str(r.get("type", "")).strip() in ("formula", "not formula")
+                                     else r for r in opts["rules"]])
+        yield from iter_strings(opts)
         yield from iter_strings([v.get("value") for v in a["inputs"].values()])
         if a["page"]:
             for el in a["page"]["elements"]:

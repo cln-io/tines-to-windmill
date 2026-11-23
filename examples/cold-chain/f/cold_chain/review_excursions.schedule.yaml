@@ -1,6 +1,6 @@
 schedule: "0 */20 * * * *"
 timezone: America/Toronto
-enabled: true
+enabled: false   # turned on by a person after the flow was reviewed and tested
 script_path: f/cold_chain/review_excursions
 is_flow: true
 args: {smtp: "$res:f/cold_chain/smtp"}

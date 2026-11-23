@@ -6,7 +6,8 @@
 schedule: "0 */20 * * * *"
 ## The timezone printed next to the Tines cron line.
 timezone: Europe/Dublin
-enabled: true
+## Always false. A person turns the schedule on after reviewing and testing the flow.
+enabled: false
 ## The flow path: the flow folder without ".flow".
 script_path: f/my_folder/my_flow
 is_flow: true
