@@ -33,9 +33,13 @@ Skip this section in a coding agent that has a shell and the skill folder.
   bash and Python). There is **no** tool named `bash`, `shell` or `terminal`:
   do not call one. Every command line in this file goes into the code tool as
   bash.
-- The scripts must **run**. Do not open a script with a file-reading tool to
-  understand it or to copy it: the scripts are large and reading one fills
-  your context. Reading `SKILL.md` and reference sections is fine.
+- The scripts must **run**. Never read a script's source, with any tool:
+  no file-reading tool, and no `cat`, `sed`, `head`, `tail`, `less` or `grep`
+  on `scripts/*.py`. The scripts are large and reading one fills your
+  context. To learn how to call one, run it with `--help`. To learn what the
+  validator wants, write the flow and run it: every finding says what is
+  wrong and how to fix it. Reading `SKILL.md`, reference sections, templates
+  and the example is fine.
 - Do not call tools of other systems (for example a Windmill connection)
   while you port. The one place they are used is step 9, after the user said
   yes.
@@ -516,7 +520,9 @@ Rules for the run:
 - Run the **draft** as a test (preview) run. Do not deploy it and do not
   enable the schedule to get a run.
 - "Reads only" means: test those steps one at a time, with the inputs they
-  need. If a step both reads and writes, it is not a read-only step.
+  need. If a step both reads and writes, it is not a read-only step. That
+  includes a step that writes only on its error path (for example it posts
+  an alert when the fetch fails): leave it out of "Reads only" and say why.
 - One run per yes. Never run again without asking again.
 
 When the run has finished, check it. Do not report "it worked" from the
@@ -544,6 +550,8 @@ status alone:
    `TEST: OK` (every step succeeded and every effect is shown),
    `TEST: PARTIAL` (it ran, but some effect is not shown or a result is
    empty), `TEST: FAILED` (a step failed), `TEST: NOT RUN` (and why).
+   Report only what the run shows. You cannot see which system a variable
+   points to, so do not call it "live", "production" or "a mock".
 6. Write the same into the notes file under **Not verified**, replacing
    "the flow has not been run" with what was run, when, and the result.
 
@@ -566,3 +574,9 @@ Then continue with the next workflow in `PLAN.md`.
   like a first run.
 - Capping or stopping the work early while still advancing the polling cursor, so the skipped items are never processed.
 - Reporting a workflow as finished without `RESULT: OK` or without the notes file.
+- Putting two actions that Tines ran side by side (a FAN-OUT) into one script
+  so that the second now depends on the first: when the first request fails,
+  the script throws and the second never runs. In Tines both run. Catch the
+  first failure, do the second, then fail at the end, or write two steps.
+- Reading a script's source (`cat`, `sed`, `grep` on `scripts/*.py`) to see
+  what the validator checks. Run it; its findings say what to fix.

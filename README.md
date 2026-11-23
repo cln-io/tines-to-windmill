@@ -2,20 +2,29 @@
 
 A skill (instructions, references and helper scripts) for translating exported
 [Tines](https://www.tines.com) stories into [Windmill](https://www.windmill.dev)
-flows. It is written for a smaller on-prem model such as Qwen: the references
-are explicit and example-heavy, and the scripts take over the mechanical work
-(digesting a large export, checking the flow that was written).
+flows, with an AI model doing the work: an on-prem model such as Qwen in
+LibreChat, or a commercial one. The references are explicit and
+example-heavy, and the scripts take over the mechanical work (digesting a
+large export, checking the flow that was written, comparing the draft in
+Windmill with the files).
 
-## Status
+How it works, with a worked example and the setup for LibreChat and for
+hosted models: [Moving Tines stories to Windmill with AI](https://cln.io/blog/tines-to-windmill/).
 
-Work in progress.
+## Tested
 
-- Nothing here has been validated against a live Windmill instance, and the
-  skill has not yet been tried with the model it is written for.
-- The references were checked against the Tines docs, the OpenFlow spec and
-  real story exports. Each file marks what could not be verified.
-- The example flow passes `scripts/validate_flow.py`, which checks structure
-  and references only. It has not been run.
+With Qwen3.8 27B in an agent loop that imitates LibreChat's code sandbox,
+against Windmill CE v1.882.0:
+
+- An invented 15-action story went from export to a running flow: validator
+  `RESULT: OK`, draft in Windmill `WINDMILL: MATCH`, test run `TEST: OK`, with
+  every outside effect checked against a mock API's request log.
+- Real stories of 63 and 143 actions were planned, mapped and written with
+  the same process; the first workflow of the larger one validates with 86
+  actions in 17 steps and none unaccounted for.
+
+The references were checked against the Tines docs, the OpenFlow spec and
+real story exports. Each file marks what could not be verified.
 
 ## Use
 
