@@ -9,7 +9,8 @@ The bundle is the flow with every `!inline file` replaced by the file's text:
 {"path", "summary", "description", "schema", "value"}. That is the shape Windmill
 takes when a flow is created through its API or pasted into the editor as JSON.
 
---check prints `WINDMILL: MATCH` or `WINDMILL: DIFFERENT` with what differs (exit 1).
+--check prints `WINDMILL: MATCH`, `WINDMILL: DIFFERENT` with what differs (exit 1), or
+`WINDMILL: NOT CHECKED` when the file is not an answer from Windmill (exit 1).
 It compares module ids, their order, kinds, languages, code (ignoring trailing
 spaces) and input_transforms. It does not prove that the flow runs.
 """
@@ -121,6 +122,27 @@ def unwrap(obj):
     return obj if isinstance(obj, dict) else {}
 
 
+SERVER_KEYS = {"created_at", "edited_at", "edited_by", "workspace_id", "extra_perms", "versions", "archived", "draft_only"}
+
+
+def server_marks(obj, depth=0):
+    """True when the answer holds a field only Windmill adds (not in our own bundle)."""
+    if depth > 5 or not isinstance(obj, dict):
+        return False
+    if SERVER_KEYS & set(obj):
+        return True
+    for key in ("flow", "draft", "deployed", "item", "result", "data", "value"):
+        v = obj.get(key)
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except ValueError:
+                continue
+        if server_marks(v, depth + 1):
+            return True
+    return False
+
+
 def main(argv):
     if len(argv) not in (2, 4) or (len(argv) == 4 and argv[2] != "--check"):
         print(__doc__.strip())
@@ -142,9 +164,17 @@ def main(argv):
         return 0
     try:
         with open(argv[3], encoding="utf-8-sig") as fh:
-            theirs = fingerprint(unwrap(json.load(fh)))
+            raw = json.load(fh)
+        theirs = fingerprint(unwrap(raw))
     except (OSError, ValueError) as exc:
         print("WINDMILL: DIFFERENT - cannot read %s as JSON: %s" % (argv[3], exc))
+        return 1
+    if not server_marks(raw):
+        print("WINDMILL: NOT CHECKED - %s has none of the fields Windmill adds to an answer (%s), so it "
+              "looks built from your own files, which compares the folder with itself. Save the Windmill "
+              "tool's answer exactly as it came back. If the answer was cut off because it is too long, "
+              "do not rebuild it: tell the user the draft could not be compared and that they should open "
+              "it in Windmill." % (argv[3], ", ".join(sorted(SERVER_KEYS))))
         return 1
     problems = []
     a, b = [m for m, _ in mine], [m for m, _ in theirs]

@@ -481,6 +481,15 @@ Only on a clear yes:
    - `WINDMILL: DIFFERENT`: fix what it lists (usually a step was cut off or
      an input was lost), update the draft, check again. After two failed
      tries, stop and tell the user what differs.
+   - `WINDMILL: NOT CHECKED`: the file is not Windmill's answer. Never build
+     `readback.json` from your own files or the bundle: that compares the
+     folder with itself and proves nothing. If the answer was cut off because
+     the flow is large, say "the draft is saved but could not be compared:
+     the read-back was too long", and ask the user to open it in Windmill.
+   - A large flow (more than about 20 KB of bundle) may not fit in one tool
+     call. If the save call fails because the arguments are not valid JSON,
+     try once more; after that, stop and tell the user to push the folder
+     with `wmill sync push`.
 5. Check the setup, by name only. For every variable and resource under Setup
    in the notes, look whether it exists in the workspace. Never read, print or
    write a secret value. Report three lists: exists, missing, could not check.
@@ -580,3 +589,10 @@ Then continue with the next workflow in `PLAN.md`.
   first failure, do the second, then fail at the end, or write two steps.
 - Reading a script's source (`cat`, `sed`, `grep` on `scripts/*.py`) to see
   what the validator checks. Run it; its findings say what to fix.
+- Dropping an outside effect as "not portable" because its input arrives
+  later from outside (a reply, a reaction, a callback that re-triggers the
+  story). Windmill can wait for that: a `suspend` step that the callback
+  resumes (`ref.py openflow "wait-for-callback"`), or a second flow started by
+  the callback's webhook. Never move the effect to another workflow that runs
+  at a different time: that changes when the data arrives. If you really
+  cannot port it, write a stub that throws, and say so in the notes.

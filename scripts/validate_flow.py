@@ -2370,6 +2370,11 @@ def main(argv=None):
     n_mod = sum(1 for recs in v.ids.values() for r in recs if r["kind"] != "tool")
     failed = bool(v.errors) or (args.strict and bool(v.warnings or n_behaviour))
     print("")
+    if not failed and args.story:
+        # Small models forget the last steps of SKILL.md in a long chat: say them here.
+        print("NEXT: run check_ts.py on the step files; write the notes file (step 8); then, if you "
+              "have Windmill tools, ASK the user whether to put the flow into Windmill as a draft "
+              "(step 9) and, after that, whether to test it (step 10).")
     if failed:
         word, tail = "FAIL", ""
     elif n_behaviour or any("[tls]" in line for line in v.warnings):
