@@ -1118,12 +1118,18 @@ def functions_line(story, actions):
             "ones you think you know: `tines_fn.py %s`): %s" % (" ".join(names[:3]), " ".join(names)))
 
 
+def mask_path(v):
+    """A random webhook path works like a password: show only its start."""
+    v = str(v)
+    return v[:4] + "...<redacted>" if re.fullmatch(r"[A-Za-z0-9_-]{16,}", v) and re.search(r"\d", v) else v
+
+
 def entry_detail(a):
     """Trigger details of an entry action, for index lines."""
     bits = list(a["entry"])
     o = a["options"]
     if a["type"] == "webhook":
-        extra = ["%s=%s" % (k, o[k]) for k in ("path", "verbs") if o.get(k)]
+        extra = ["%s=%s" % (k, mask_path(o[k]) if k == "path" else o[k]) for k in ("path", "verbs") if o.get(k)]
         bits = ["webhook" + (" " + " ".join(extra) if extra else "")] + [b for b in bits if b != "webhook"]
     elif a["type"] == "page":
         fields = [el["ref"] for el in a["page"]["elements"] if "ref" in el]
@@ -1280,6 +1286,8 @@ class Renderer:
                 continue
             if a["type"] == "webhook" and k == "secret" and v:
                 v = "<redacted>"
+            if a["type"] == "webhook" and k == "path" and v:
+                v = mask_path(v)
             emit(k, self.shorten(v, aid), body, out)
 
     def page_body(self, a, body, out):
@@ -1736,6 +1744,8 @@ class Renderer:
             options["page_logo"] = "<logo image omitted>"
         if a["type"] == "webhook" and options.get("secret"):
             options["secret"] = "<redacted>"
+        if a["type"] == "webhook" and options.get("path"):
+            options["path"] = mask_path(options["path"])
         out.append("  options (raw JSON): " + dump(options))
         if a["children"]:
             out.append("  group internals:")
@@ -1759,7 +1769,7 @@ def render_json(export, story, ids):
         if a["type"] == "page":
             d["options"] = {k: v for k, v in a["options"].items() if k != "page_logo"}
         if a["type"] == "webhook" and a["options"].get("secret"):
-            d["options"] = dict(a["options"], secret="<redacted>")
+            d["options"] = dict(a["options"], secret="<redacted>", path=mask_path(a["options"].get("path", "")))
         d["in"] = [{"id": i, "type": k or "primary"} for i, k in a["in"]]
         d["out"] = [{"id": i, "type": k or "primary"} for i, k in a["out"]]
         actions.append(d)

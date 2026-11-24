@@ -1906,6 +1906,13 @@ def check_webhook_leaks(v, story_path, flow_dir):
     parent, name = os.path.dirname(os.path.abspath(flow_dir)), v.flow_name or ""
     files = [os.path.join(flow_dir, f) for f in sorted(os.listdir(flow_dir))]
     files += [os.path.join(parent, f) for f in sorted(os.listdir(parent)) if f.startswith(name + ".")]
+    if v.root and os.path.isdir(v.root):      # PLAN.md and the worksheets next to f/
+        files += [os.path.join(v.root, f) for f in sorted(os.listdir(v.root)) if f.endswith(".md")]
+        if name and not os.path.isfile(os.path.join(v.root, name + ".WORK.md")):
+            v.warn("process", name, "there is no worksheet `%s.WORK.md` next to the `f` folder. Without it the "
+                   "outside effects of this workflow were not listed before the code was written." % name,
+                   "do steps 2 to 5 for this workflow as for the first one: read the outline, read each recipe "
+                   "it names, write the worksheet, then check the flow against it")
     for path in files:
         if not os.path.isfile(path) or os.path.basename(path).endswith(".bundle.json"):
             continue
@@ -2505,8 +2512,10 @@ def main(argv=None):
     if not failed and args.story:
         # Small models forget the last steps of SKILL.md in a long chat: say them here.
         print("NEXT: run check_ts.py on the step files; write the notes file (step 8); then, if you "
-              "have Windmill tools, ASK the user whether to put the flow into Windmill as a draft "
-              "(step 9) and, after that, whether to test it (step 10). Step 9 starts with "
+              "have Windmill tools, STOP and ASK the user whether to put this flow into Windmill as a draft "
+              "(step 9) and, after that, whether to test it (step 10). Ask before you start the next "
+              "workflow, unless the user asked for several workflows in one go: then ask once, right after "
+              "the last one. Step 9 starts with "
               "`python3 scripts/bundle_flow.py %s`: it builds the JSON for Windmill (no PyYAML needed) and "
               "prints what to do. Never build that JSON yourself." % (flow_dir or "<flow folder>"))
     if failed:

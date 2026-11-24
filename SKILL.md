@@ -112,7 +112,10 @@ that same call.
    exception is writing a pasted story to a file, in the section above.
 2. **One workflow at a time.** One story often holds many independent
    workflows. Each becomes its own flow folder. Finish and validate one before
-   starting the next.
+   starting the next. Give the second and the tenth workflow the same care
+   as the first: read its outline, read every recipe the outline names for
+   it, write its worksheet. A recipe you read for an earlier workflow is not
+   in your memory any more.
 3. **Port the behaviour, not the actions.** Several Tines actions usually
    become one script step. Do not create one Windmill step per Tines action.
 4. **Account for every action.** Each action of the workflow is either mapped
@@ -263,7 +266,9 @@ Explanations go after ` # `.
 ### Step 4. Collect what the export does not contain
 
 Before writing code, list what is missing for this workflow and ask the user
-once, in one message:
+once, in one message. Asking means: write the question as your answer and
+stop, so the user can reply. A question written into `PLAN.md` or the
+worksheet is not asked.
 
 - the definition of each lambda stored in a resource (the index lists
   resources that are called as functions);
@@ -630,6 +635,10 @@ Then continue with the next workflow in `PLAN.md`.
   action id.
 - Offering a test run while a Setup item is missing "to see if the structure
   runs". A run with missing setup only fails; step 10 says: do not run.
+- A form input whose default starts the destructive path (a `button` that
+  defaults to "delete all", a `confirm` that defaults to true). An input that
+  deletes, sends or blocks has no default and is required, or the harmless
+  choice is the default.
 - Reading a script's source (`cat`, `sed`, `grep` on `scripts/*.py`) to see
   what the validator checks. Run it; its findings say what to fix.
 - Dropping an outside effect as "not portable" because its input arrives

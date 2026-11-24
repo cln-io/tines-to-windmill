@@ -336,7 +336,7 @@ a007 book_a_room  "Book a room"  [page/success_page]  ENTRY: page  recipe 4
     action: <<book_a_room.body.button>>
     requested_by: <<book_a_room.headers.email>>
 ```
-**Write** one `schema` property per input field, and one `button` property when the page has several buttons.
+**Write** one `schema` property per input field, and one `button` property when the page has several buttons. Give `button` a default only when that button's path is harmless. When a button deletes, sends or blocks something, leave the default out and put `button` under `required`.
 ```yaml
 # flow.yaml
 summary: Book a study room

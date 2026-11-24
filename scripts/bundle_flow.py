@@ -182,7 +182,8 @@ def main(argv):
         else:
             print("DRAFT: OK TO SAVE - %d bytes. Do these in order, all of them:" % size)
             print("  1. read what is at `%s` in Windmill now; if a flow or draft is there, ask the user first" % local["path"])
-            print("  2. save the draft: pass summary, description, schema and value of the bundle file, unchanged")
+            print("  2. save the draft: pass summary, description, schema and value of the bundle file, unchanged, "
+                  "as a JSON object (not as one long string)")
             print("  3. read the flow back, and write the tool's answer, unchanged, to a file readback.json")
             print("  4. bundle_flow.py %s --check readback.json" % flow_dir)
             print("  5. for every item under Setup in the notes: does it exist in the workspace (by name only)")

@@ -19,6 +19,12 @@ Or: the webhook URL and the JSON body the sender must post. Or: the users run th
 
 Depends on: `f/my_folder/other_flow` (Tines sub-story `other_story`, not ported yet; inputs `item_id`).
 
+### Webhook entry (delete this block when the flow is not started by a webhook)
+
+- Who calls the Tines webhook today, and that this sender must be pointed at the Windmill URL of the flow.
+- The Tines webhook secret is not used any more: the sender needs a Windmill token (never write either value here).
+- What the sender gets back: Tines answered with (say what); Windmill answers with a job id, unless the flow is called on its "run and wait for result" URL.
+
 ## 2. Mapping
 
 | Step | Tines actions |
