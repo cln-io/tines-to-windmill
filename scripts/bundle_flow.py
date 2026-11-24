@@ -16,6 +16,7 @@ spaces) and input_transforms. It does not prove that the flow runs.
 """
 import hashlib
 import json
+import re
 import os
 import sys
 
@@ -70,8 +71,10 @@ def norm_code(code):
 def walk(value, trail=""):
     """Yield (id, record) for every module, in order, through loops and branches."""
     def modules(mods, where):
-        for m in mods or []:
-            if not isinstance(m, dict):
+        for n, m in enumerate(mods or []):
+            if not isinstance(m, dict) or not isinstance(m.get("id"), str) or not isinstance(m.get("value"), dict):
+                yield "(not a module: entry %d of %s)" % (n + 1, where or "the top level"), {
+                    "where": where, "type": "BROKEN", "language": None, "code": None, "inputs": "{}"}
                 continue
             v = m.get("value") or {}
             yield m.get("id"), {
@@ -122,6 +125,9 @@ def unwrap(obj):
     return obj if isinstance(obj, dict) else {}
 
 
+CHAT_LIMIT = 16000   # bytes of bundle; above this a tool answer with the flow in it is cut off in a chat
+
+
 SERVER_KEYS = {"created_at", "edited_at", "edited_by", "workspace_id", "extra_perms", "versions", "archived", "draft_only"}
 
 
@@ -164,7 +170,23 @@ def main(argv):
             json.dump(local, fh, indent=1, ensure_ascii=False)
         print("BUNDLE: OK - %s (%d bytes, %d module(s), path %s)" % (out, os.path.getsize(out), len(mine), local["path"]))
         for mid, rec in mine:
-            print("  %-28s %-12s %-8s code %s" % (mid, rec["type"], rec["language"] or "-", rec["code"] or "-"))
+            print("  %-28s %-12s %-8s code %s  in %s" % (mid, rec["type"], rec["language"] or "-", rec["code"] or "-",
+                                                         rec["where"] or "top level"))
+        size = os.path.getsize(out)
+        if size > CHAT_LIMIT:
+            print("DRAFT: TOO LARGE FOR A CHAT TOOL - %d bytes, limit %d. Do NOT save this flow through a Windmill "
+                  "tool: retyping a flow of this size goes wrong (branches end up in the wrong place, steps get "
+                  "lost) and the read-back is cut off, so it cannot be checked. Tell the user: \"This flow is too "
+                  "large to save and verify from the chat. Push the folder with `wmill sync push`, or import %s "
+                  "in Windmill.\" Then go on with the next workflow." % (size, CHAT_LIMIT, os.path.basename(out)))
+        else:
+            print("DRAFT: OK TO SAVE - %d bytes. Do these in order, all of them:" % size)
+            print("  1. read what is at `%s` in Windmill now; if a flow or draft is there, ask the user first" % local["path"])
+            print("  2. save the draft: pass summary, description, schema and value of the bundle file, unchanged")
+            print("  3. read the flow back, and write the tool's answer, unchanged, to a file readback.json")
+            print("  4. bundle_flow.py %s --check readback.json" % flow_dir)
+            print("  5. for every item under Setup in the notes: does it exist in the workspace (by name only)")
+            print("  Say MATCH or \"identical\" to the user only when step 4 printed `WINDMILL: MATCH`.")
         return 0
     try:
         with open(argv[3], encoding="utf-8-sig") as fh:
@@ -181,14 +203,29 @@ def main(argv):
               "it in Windmill." % (argv[3], ", ".join(sorted(SERVER_KEYS))))
         return 1
     problems = []
+    if re.search(r'"content"\s*:\s*"!inline ', json.dumps(raw)):
+        problems.append("the flow in Windmill holds `!inline <file>` where the code should be: it has no code. "
+                        "It was not saved from the bundle file. Save again with the `value` of the bundle "
+                        "file (`bundle_flow.py %s` writes it)" % flow_dir)
     a, b = [m for m, _ in mine], [m for m, _ in theirs]
-    if a != b:
-        problems.append("module ids or order differ: folder %s, Windmill %s" % (a, b))
     there = dict(theirs)
+    for mid in a:
+        if mid not in there:
+            problems.append("module `%s` is missing in Windmill" % mid)
+    for mid, rec in theirs:
+        if rec["type"] == "BROKEN":
+            problems.append("Windmill holds something that is not a module: %s" % mid)
+        elif mid not in dict(mine):
+            problems.append("module `%s` is in Windmill but not in the folder" % mid)
+    if not problems and a != b:
+        problems.append("module order differs: folder %s, Windmill %s" % (a, b))
     for mid, rec in mine:
         other = there.get(mid)
         if not other:
             continue
+        if rec["where"] != other["where"]:
+            problems.append("module `%s` sits in a different place: folder `%s`, Windmill `%s`"
+                            % (mid, rec["where"] or "top level", other["where"] or "top level"))
         for key, label in (("type", "kind"), ("language", "language"), ("code", "code"), ("inputs", "input_transforms")):
             if rec[key] != other[key]:
                 problems.append("module `%s`: %s differs" % (mid, label))

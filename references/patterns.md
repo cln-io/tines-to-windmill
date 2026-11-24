@@ -1122,7 +1122,7 @@ a040 -> send_notice   # Send notice [http_request]
 - The block marker is ignored. `|-` means the text has no newline at the end. `|` means it has one.
 - A condition uses JavaScript truthiness. `<%if x%>` is true for `0` and `""`. Use `truthy(x)` for a bare value.
 - A pill holds an array or an object (`<<rows>>` in a CSV or JSON body). Tines does not specify how that renders. This skill's convention is JSON: `text(rows)`. If the receiver needs another format (CSV lines), build that format in code and say so in the notes.
-- The text is HTML (an email body, a table with `<tr>` tags). Then every inserted value goes through `esc()`, not `text()`. For a Markdown chat message use `text()`; in a table cell also replace the pipe character and line breaks.
+- The text is HTML (an email body, a table with `<tr>` tags). Then every inserted **data value** goes through `esc()`, not `text()`. Text that the story itself wrote is never escaped: a separator such as `JOIN(list, " &nbsp;&middot;&nbsp; ")`, a heading, a style attribute. Escape each item, then join with the literal separator. Copy every literal piece of the template: when you move repeated markup into a helper, check that no heading or style text was lost. For a Markdown chat message use `text()`; in a table cell also replace the pipe character and line breaks.
 
 **Notes file**
 - Mapping: the text action is a function inside the step that sends the text.
@@ -2385,6 +2385,7 @@ a092 -> record_payment   # Send receipt [http_request]
 **Notes file**
 - Setup: variables `f/library/payments_api_secret` (secret, was `CREDENTIAL.payments_api`), `f/library/receipts_user` and `f/library/receipts_password` (secret). Resource `f/library/payments_api` (not secret, key `url`, was `RESOURCE.payments_api`).
 - Behaviour differences: the credential `payments_api` has the path suffix `_secret`, because a resource has the same name.
+- The action has both `basic_auth` and an `Authorization` header (or two other ways to log in). A request has one `Authorization` header. Which one Tines sends is **not verified**: do not invent a second header name such as `Basic-Auth`. Send the explicit `Authorization` header, keep the basic-auth values as unused arguments, and write the choice under **Not verified** in the notes so the user can confirm it.
 
 ## 26. `META` passed on as an object, and the story run id
 
@@ -2443,6 +2444,7 @@ a094 -> write_audit_entry   # Write audit entry [http_request]
 - `META` or `STORY_RUN_GUID()` is left in the code, or `META` is sent as an empty object.
 - `process.env.WM_JOB_ID` alone is used as the run id. Each step has another job id. Two steps would then report two runs.
 - Values are invented for `META.tenant`, `META.action.id`, `META.event.id`. If nothing reads a key, leave it out. If something reads it and there is no Windmill value, send `null` and say so.
+- The receiver is a sub-story that **checks** a `META` field (for example it stops with "missing parameter" when the tenant name is empty), and the caller sends `null` for it. Look at the sub-story's first triggers before you decide what callers send. Decide the values once, when the sub-story is ported, write them in `PLAN.md`, and make every caller send the same.
 - `META` goes to a sub-story (`my_meta: =META` in a send-to-story payload). Print the sub-story (`--story s1`), find the `my_meta.x` paths it reads, and build the object with those keys.
 
 **Notes file**

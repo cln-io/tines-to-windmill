@@ -1099,6 +1099,25 @@ def recipes_line(actions):
             "every action it applies to): " + " ".join(map(str, nums)))
 
 
+FUNC_CALL = re.compile(r"(?<![\w$.])([A-Z][A-Z0-9_]{1,})\s*\(")
+EASY_FUNCS = {"IF", "AND", "OR", "NOT", "SIZE", "DEFAULT", "TEXT", "NUMBER"}
+
+
+def functions_line(story, actions):
+    """'FUNCTIONS ...' line: the formula functions the running actions use."""
+    names = set()
+    for a in actions:
+        if a["status"] != "active":
+            continue
+        for text in story._sources(a):
+            names.update(FUNC_CALL.findall(text))
+    names = sorted(n for n in names if n not in EASY_FUNCS and n not in ("CREDENTIAL", "RESOURCE", "META", "LAMBDA"))
+    if not names:
+        return None
+    return ("FUNCTIONS used by the actions that run (look up each one you have not looked up yet, also the "
+            "ones you think you know: `tines_fn.py %s`): %s" % (" ".join(names[:3]), " ".join(names)))
+
+
 def entry_detail(a):
     """Trigger details of an entry action, for index lines."""
     bits = list(a["entry"])
@@ -1563,6 +1582,9 @@ class Renderer:
         line = recipes_line([story.actions[i] for i in wf["all"]])
         if line:
             out.append("  " + line)
+        line = functions_line(story, [story.actions[i] for i in wf["all"]])
+        if line:
+            out.append("  " + line)
         if wf["no_effect"]:
             out.append("  NO-EFFECT: no action that runs here writes anything outside the story (no HTTP write, "
                        "email, story call, record or page shown). Nothing to port unless the user says otherwise.")
@@ -1605,6 +1627,9 @@ class Renderer:
         acts = story.actions
         out = ["WORKFLOW " + self.workflow_line(story, wf, with_size=False)]
         line = recipes_line([story.actions[i] for i in wf["all"]])
+        if line:
+            out.append("  " + line)
+        line = functions_line(story, [story.actions[i] for i in wf["all"]])
         if line:
             out.append("  " + line)
         out.append("  OVERVIEW ONLY: the full detail is %s, over the budget of %s chars. "

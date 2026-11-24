@@ -939,6 +939,46 @@ def flow_location(flow_dir):
     return name, None, None
 
 
+URL_LITERAL = re.compile(r"https?://([A-Za-z0-9.-]+)(?::\d+)?([^\s\"'`<>)]*)")
+PUBLIC_TLDS = set("""com org net io dev app ai co cloud edu gov int info biz me tv us uk de fr nl be es it pt pl ch at se no dk
+fi ie cz ro gr hu eu ca au nz jp cn in br mx za sg hk kr ru ua tr il ae tech online site xyz example test""".split())
+TOKENISH = re.compile(r"[A-Za-z0-9_-]{24,}")
+
+
+def literal_findings(code):
+    """[("secret"|"host", text)] for URL literals in a script that should not be in code."""
+    out, seen = [], set()
+    for m in URL_LITERAL.finditer(code):
+        host, rest = m.group(1).lower().strip("."), m.group(2)
+        labels = host.split(".")
+        internal = (len(labels) == 1 or re.fullmatch(r"[\d.]+", host) is not None
+                    or labels[-1] in ("local", "lan", "internal", "corp", "intra", "home", "localdomain")
+                    or labels[-1] not in PUBLIC_TLDS)
+        if host in ("localhost",) or host.startswith("example") or ".example." in host + ".":
+            internal = False
+        if internal and ("host", host) not in seen:
+            seen.add(("host", host)); out.append(("host", host))
+        for part in re.split(r"[/?&=#]", re.sub(r"\$\{[^}]*\}", "", rest)):
+            if TOKENISH.fullmatch(part) and re.search(r"\d", part) and re.search(r"[A-Za-z]", part) \
+                    and ("secret", part) not in seen:
+                seen.add(("secret", part)); out.append(("secret", part))
+    for m in re.finditer(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)", code):
+        domain = m.group(1).lower()
+        if domain.startswith("example.") or ".example." in domain or re.search(r"\.(png|jpg|svg|js|ts|json)$", domain):
+            continue
+        if ("email", m.group(0)) not in seen:
+            seen.add(("email", m.group(0))); out.append(("email", m.group(0)))
+    # a path that starts with a variable: `${api.url}/export/private/<token>.ics`
+    for m in re.finditer(r"/([A-Za-z0-9_-]{24,})(?:\.[a-z0-9]{2,5})?(?=[/\"'`?&#]|$)", code, re.M):
+        part = m.group(1)
+        line = code[code.rfind("\n", 0, m.start()) + 1:m.start()]
+        if line.lstrip().startswith(("//", "*", "#")) or not re.search(r"[\"'`]", line):
+            continue
+        if re.search(r"\d", part) and re.search(r"[A-Za-z]", part) and ("secret", part) not in seen:
+            seen.add(("secret", part)); out.append(("secret", part))
+    return out
+
+
 RESULTS_DOT = re.compile(r"(?<![\w$.])results\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
 RESULTS_BR = re.compile(r"(?<![\w$.])results\s*(?:\?\.)?\[\s*([\"'`])([^\"'`]+)\1\s*\]")
 INPUT_DOT = re.compile(r"(?<![\w$.])flow_input\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
@@ -1298,8 +1338,9 @@ class Validator:
                 if not found:
                     self.warn("path-missing", w, "calls %s `%s`, which is not in the output tree (%s)."
                               % (vtype, path, self.root),
-                              "fine if it already exists in the workspace or is planned; it must exist before this "
-                              "flow runs, so list it under Setup in the notes")
+                              "this flow fails at that step until it exists. If you port it later, say so in PLAN.md. "
+                              "If the user told you to skip it, list it under Setup in the notes as \"flow that must "
+                              "exist\", with the inputs it gets and what it must return")
         elif vtype in ("forloopflow", "whileloopflow"):
             if vtype == "forloopflow" and value.get("iterator") is not None:
                 self.check_transform(value["iterator"], mid, "iterator", visible, ctx)
@@ -1634,14 +1675,35 @@ class Validator:
         if not code.strip():
             self.error("rawscript", w, "script content is empty.", "write the script with an exported `main` function")
             return
+        for kind, what in literal_findings(code):
+            if kind == "email":
+                self.warn("literal", w, "the script holds a real email address (`%s...`)." % what[:3],
+                          "make the address a flow input or a variable and name it under Setup; do not write it "
+                          "in the notes either")
+            elif kind == "secret":
+                self.warn("literal", w, "a URL in the script holds a long token-like part (`%s...`): a link like that "
+                          "works as a password." % what[:10],
+                          "move the whole URL to a secret variable, pass it in as an argument, and list it under Setup")
+            else:
+                self.warn("literal", w, "the script holds a host name that looks internal (`%s`)." % what,
+                          "move the base URL to a variable (`$var:f/<folder>/<name>_base_url`), pass it in as an "
+                          "argument, and describe the system under Setup without writing the host name")
         if "NODE_TLS_REJECT_UNAUTHORIZED" in code:
             self.warn("tls", w, "the script switches certificate checks off for every request (NODE_TLS_REJECT_UNAUTHORIZED).",
                       "remove it; see recipe 10 for the one request that needs it")
         for line in code.splitlines():
-            if re.search(r"rejectUnauthorized\s*:\s*false", line) and "?" not in line.split("rejectUnauthorized")[0]:
+            if not re.search(r"rejectUnauthorized\s*:\s*false", line):
+                continue
+            if "?" not in line.split("rejectUnauthorized")[0]:
                 self.warn("tls", w, "TLS certificate checks are switched off unconditionally (`rejectUnauthorized: false`).",
                           "keep checks on by default: put it behind a `skip_tls_verify` argument that is false "
                           "unless the user sets it (recipe 10), and say so under Setup in the notes")
+                break
+            if "skip_tls_verify" not in line.split("rejectUnauthorized")[0]:
+                self.warn("tls", w, "TLS certificate checks are switched off by something other than a `skip_tls_verify` "
+                          "argument (a resource field or a copied Tines option).",
+                          "the only switch is a `skip_tls_verify` argument of the step that is false unless the "
+                          "user sets it (recipe 10); do not read it from a resource")
                 break
         if lang is None:
             return
@@ -1800,6 +1862,71 @@ def find_map(flow_dir, explicit):
         if os.path.isfile(p):
             return p
     return os.path.join(flow_dir, "tines_action_map.md")
+
+
+def story_webhook_secrets(story_path):
+    """Webhook paths and secrets of the story: each one works as a password for that webhook."""
+    found = set()
+    try:
+        with open(story_path, encoding="utf-8-sig") as fh:
+            raw = fh.read()
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return found
+    # webhooks of OTHER stories that this one calls: .../webhook/<path>/<secret>
+    for m in re.finditer(r"/webhook/([A-Za-z0-9_-]{16,})/([A-Za-z0-9_-]{16,})", raw):
+        found.update(m.groups())
+
+    def walk(node):
+        if isinstance(node, dict):
+            opts = node.get("options")
+            if isinstance(opts, str):
+                try:
+                    opts = json.loads(opts)
+                except ValueError:
+                    opts = None
+            if isinstance(opts, dict) and "ebhook" in str(node.get("type", "")):
+                for key in ("path", "secret"):
+                    val = opts.get(key)
+                    if isinstance(val, str) and len(val) >= 16 and re.fullmatch(r"[A-Za-z0-9_-]+", val):
+                        found.add(val)
+            for val in node.values():
+                walk(val)
+        elif isinstance(node, list):
+            for val in node:
+                walk(val)
+    walk(data)
+    return found
+
+
+def check_webhook_leaks(v, story_path, flow_dir):
+    secrets = story_webhook_secrets(story_path)
+    if not flow_dir or not os.path.isdir(flow_dir):
+        return
+    parent, name = os.path.dirname(os.path.abspath(flow_dir)), v.flow_name or ""
+    files = [os.path.join(flow_dir, f) for f in sorted(os.listdir(flow_dir))]
+    files += [os.path.join(parent, f) for f in sorted(os.listdir(parent)) if f.startswith(name + ".")]
+    for path in files:
+        if not os.path.isfile(path) or os.path.basename(path).endswith(".bundle.json"):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if path.endswith(".md") and "NOTES" in os.path.basename(path):
+            for kind, what in literal_findings(text):
+                if kind in ("host", "email"):
+                    v.warn("literal", os.path.basename(path), "the notes hold %s (`%s...`)."
+                           % ("an internal host name" if kind == "host" else "a real email address", what[:3]),
+                           "describe the system or the recipient in words; the value goes into the variable, "
+                           "not into this file")
+        for sec in sorted(secrets):
+            if sec in text:
+                v.warn("literal", os.path.basename(path), "holds a webhook path or secret of the Tines story (`%s...`): "
+                       "anyone who has it can call that webhook." % sec[:6],
+                       "remove it everywhere, also from comments, error messages and the notes; name the webhook by "
+                       "its action id and name instead")
 
 
 def coverage(v, story_path, flow_dir, map_arg, out, workflow=None):
@@ -2359,6 +2486,7 @@ def main(argv=None):
     check_schedules(v, flow_dir, args.builtin_yaml)
     extra, behaviour_lines, cov = [], [], None
     if args.story:
+        check_webhook_leaks(v, args.story, flow_dir)
         cov = coverage(v, args.story, flow_dir, args.map, extra, args.workflow)
         if cov:
             behaviour_lines = behaviour(v, cov, flow_dir)
@@ -2378,12 +2506,16 @@ def main(argv=None):
         # Small models forget the last steps of SKILL.md in a long chat: say them here.
         print("NEXT: run check_ts.py on the step files; write the notes file (step 8); then, if you "
               "have Windmill tools, ASK the user whether to put the flow into Windmill as a draft "
-              "(step 9) and, after that, whether to test it (step 10).")
+              "(step 9) and, after that, whether to test it (step 10). Step 9 starts with "
+              "`python3 scripts/bundle_flow.py %s`: it builds the JSON for Windmill (no PyYAML needed) and "
+              "prints what to do. Never build that JSON yourself." % (flow_dir or "<flow folder>"))
     if failed:
         word, tail = "FAIL", ""
-    elif n_behaviour or any("[tls]" in line for line in v.warnings):
+    elif n_behaviour or any(tag in line for line in v.warnings for tag in ("[tls]", "[literal]", "[path-missing]")):
         word = "REVIEW"
-        tail = (" - not finished: fix each behaviour or tls warning, or explain it in one sentence in the notes file")
+        tail = (" - fix each behaviour, tls, literal or path-missing warning, or explain it in one sentence in the "
+                "notes file. This script does not read the notes: REVIEW stays after you explained them, and that "
+                "is then the finished state. Do not re-run to make it say OK")
     else:
         word = "OK"
         tail = (" (structure and references only: this does not prove the flow runs or reproduces "

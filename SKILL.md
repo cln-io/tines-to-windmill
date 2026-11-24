@@ -457,7 +457,9 @@ Do this step only when you have tools that reach Windmill (a Windmill
 connection). Without them, tell the user the flow is ready as files and how to
 push it (`wmill sync push`), and continue with the next workflow.
 
-**Ask first, every time.** After step 8, ask the user this, and wait. A
+**Ask first, every time.** After step 8, ask the user this, and wait. (When
+the user asked for several workflows in one go, you may ask once for all of
+them at the end; then do points 1 to 5 for each flow, one flow at a time.) A
 general go-ahead given earlier ("go ahead", "don't ask me until it passes")
 is not a yes to this question: only an answer to it is.
 
@@ -468,9 +470,18 @@ is not a yes to this question: only an answer to it is.
 
 Only on a clear yes:
 
-1. Bundle the flow, so you do not retype any code:
+1. Bundle the flow, so you do not retype any code. Never build the flow
+   JSON yourself and never write your own YAML reader: this script needs
+   nothing installed. A draft whose `content` is `!inline <file>` has no code.
    `python3 scripts/bundle_flow.py OUT/f/<folder>/<flow_name>.flow`
-   It writes `<flow_name>.bundle.json` and prints one line per step.
+   It writes `<flow_name>.bundle.json` and prints one line per step, then
+   one of two lines:
+   - `DRAFT: OK TO SAVE`: go on with point 2.
+   - `DRAFT: TOO LARGE FOR A CHAT TOOL`: stop step 9 for this flow. Do not
+     save it through a Windmill tool, not in parts and not retyped: a flow of
+     that size loses steps and branches on the way, and the read-back is cut
+     off, so nobody can check it. Tell the user what the line says (push the
+     folder with `wmill sync push`), and go on with the next workflow.
 2. Read what is already at that path. If a flow or draft exists there, stop
    and ask the user whether to replace it. Never overwrite without that answer.
 3. Create the flow as a **draft** with the content of the bundle file
@@ -493,10 +504,9 @@ Only on a clear yes:
      cut off, you may try once more. Never repair it from the bundle or your
      own files. After the second failure, tell the user "the draft is saved
      but could not be compared" and continue with point 5.
-   - A large flow (more than about 20 KB of bundle) may not fit in one tool
-     call. If the save call fails because the arguments are not valid JSON,
-     try once more; after that, stop and tell the user to push the folder
-     with `wmill sync push`.
+   - If the save call fails because the arguments are not valid JSON, try
+     once more; after that, stop and tell the user to push the folder with
+     `wmill sync push`.
 5. Check the setup, by name only. For every variable and resource under Setup
    in the notes, look whether it exists in the workspace. Never read, print or
    write a secret value. Report three lists: exists, missing, could not check.
@@ -594,6 +604,32 @@ Then continue with the next workflow in `PLAN.md`.
   so that the second now depends on the first: when the first request fails,
   the script throws and the second never runs. In Tines both run. Catch the
   first failure, do the second, then fail at the end, or write two steps.
+- Writing a whole worksheet, design or large file in one giant answer. Above
+  about 4,000 tokens the answer can be cut off and the whole tool call is
+  lost. Write long files in sections: create the file with the first part,
+  then append the next parts with separate calls.
+- Leaving a call to a flow that does not exist because the user said to skip
+  that workflow or sub-story. Keep the call, and list the flow under Setup in
+  the notes as "flow that must exist", with its path, the inputs it gets and
+  what it must return.
+- Copying a link with a long random part (a private calendar or share link),
+  an internal host name or a real email address into a step file or the
+  notes. They go into variables or flow inputs; the notes describe them in
+  words.
+- Telling the user a draft "matches" or "reads back identical" from looking
+  at the tool's answer. Only the line `WINDMILL: MATCH` from
+  `bundle_flow.py --check` allows that sentence.
+- Re-running the validator after writing the notes, hoping `RESULT: REVIEW`
+  turns into `OK`. It will not: the validator does not read the notes.
+  `REVIEW` with every warning explained in the notes is finished.
+- An expression that reads a field the step does not return
+  (`results.get_state.days` when the step returns `{status, body: {days}}`).
+  Before you write `results.<id>.<field>`, look at that step's `return`.
+- Copying a webhook path or secret of the story into a comment, an error
+  message or the notes. It works as a password. Name the webhook by its
+  action id.
+- Offering a test run while a Setup item is missing "to see if the structure
+  runs". A run with missing setup only fails; step 10 says: do not run.
 - Reading a script's source (`cat`, `sed`, `grep` on `scripts/*.py`) to see
   what the validator checks. Run it; its findings say what to fix.
 - Dropping an outside effect as "not portable" because its input arrives
