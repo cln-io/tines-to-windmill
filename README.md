@@ -40,8 +40,17 @@ python3 scripts/validate_flow.py examples/cold-chain/f/cold_chain/review_excursi
 
 Checked on one self-hosted instance, so treat it as a starting point:
 
-- Turn on Run Code and the skill. The model runs the scripts with the code
-  tool; there is no separate shell tool.
+- Turn on Run Code and the skill, and name it in your first message ("use
+  the tines-to-windmill skill"). With a Windmill connection in the same chat
+  a model may otherwise go straight to the Windmill tools and port by hand,
+  with none of the checks.
+- The model runs the scripts with the code tool; there is no separate shell
+  tool.
+- A big port needs more tool calls than one message allows. When the model
+  stops at the limit, say "continue".
+- Test runs of TypeScript steps need a worker that can install packages
+  (reach the npm registry, directly or through your proxy). A job that hangs
+  at `bun install` is that.
 - Give the story as a `.json` file in the code environment when you can.
   A story pasted into the message also works for small stories: the model
   writes it to a file and `scripts/check_story.py` checks that it is complete

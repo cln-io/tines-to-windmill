@@ -2,7 +2,8 @@
 """bundle_flow.py - one JSON file of a flow folder, and a check of what Windmill gives back.
 
 USAGE
-  bundle_flow.py FLOW_DIR                 write FLOW_DIR/../<name>.bundle.json and print a fingerprint
+  bundle_flow.py FLOW_DIR                 write FLOW_DIR/../<name>.bundle.json (and <name>.skeleton.json: the
+                                          same flow with empty code) and print how to save it
   bundle_flow.py FLOW_DIR --check FILE    compare a flow read back from Windmill (JSON) with the folder
 
 The bundle is the flow with every `!inline file` replaced by the file's text:
@@ -53,6 +54,37 @@ def flow_path(flow_dir):
         if parts[i] in ("f", "u"):
             return "/".join(parts[i:-1] + [name])
     return name
+
+
+def inline_files(node, found=None):
+    """[(module id, file)] for every step whose code is `!inline file`, in order."""
+    found = [] if found is None else found
+    if isinstance(node, dict):
+        v = node.get("value")
+        if isinstance(node.get("id"), str) and isinstance(v, dict) and str(v.get("content", "")).startswith("!inline "):
+            found.append((node["id"], v["content"].split(" ", 1)[1].strip()))
+        for child in node.values():
+            inline_files(child, found)
+    elif isinstance(node, list):
+        for child in node:
+            inline_files(child, found)
+    return found
+
+
+def skeleton(node):
+    """The flow with the code of every step emptied: small enough to pass through a tool call."""
+    if isinstance(node, dict):
+        return {k: ("" if k == "content" and isinstance(v, str) and node.get("type") == "rawscript" else skeleton(v))
+                for k, v in node.items()}
+    if isinstance(node, list):
+        return [skeleton(x) for x in node]
+    return node
+
+
+def raw_flow(flow_dir):
+    with open(os.path.join(flow_dir, "flow.yaml"), encoding="utf-8") as fh:
+        data, _ = validate_flow.load_yaml(fh.read())
+    return data
 
 
 def bundle(flow_dir):
@@ -173,21 +205,47 @@ def main(argv):
             print("  %-28s %-12s %-8s code %s  in %s" % (mid, rec["type"], rec["language"] or "-", rec["code"] or "-",
                                                          rec["where"] or "top level"))
         size = os.path.getsize(out)
-        if size > CHAT_LIMIT:
-            print("DRAFT: TOO LARGE FOR A CHAT TOOL - %d bytes, limit %d. Do NOT save this flow through a Windmill "
-                  "tool: retyping a flow of this size goes wrong (branches end up in the wrong place, steps get "
-                  "lost) and the read-back is cut off, so it cannot be checked. Tell the user: \"This flow is too "
-                  "large to save and verify from the chat. Push the folder with `wmill sync push`, or import %s "
-                  "in Windmill.\" Then go on with the next workflow." % (size, CHAT_LIMIT, os.path.basename(out)))
-        else:
+        files = inline_files(raw_flow(flow_dir))
+        skel_path = out[:-len(".bundle.json")] + ".skeleton.json"
+        with open(skel_path, "w", encoding="utf-8") as fh:
+            json.dump(skeleton(local), fh, ensure_ascii=False, separators=(",", ":"))
+        skel_size = os.path.getsize(skel_path)
+        last = ["  %d. read the flow back, and write the tool's answer, unchanged, to a file readback.json",
+                "  %d. bundle_flow.py " + flow_dir + " --check readback.json   (if the answer was cut off: tell the "
+                "user \"saved, but too long to compare from the chat: open it in Windmill\")",
+                "  %d. for every item under Setup in the notes: does it exist in the workspace (by name only)"]
+        first = "  1. read what is at `%s` in Windmill now; if a flow or draft is there, ask the user first" % local["path"]
+        if size <= CHAT_LIMIT:
             print("DRAFT: OK TO SAVE - %d bytes. Do these in order, all of them:" % size)
-            print("  1. read what is at `%s` in Windmill now; if a flow or draft is there, ask the user first" % local["path"])
-            print("  2. save the draft: pass summary, description, schema and value of the bundle file, unchanged, "
-                  "as a JSON object (not as one long string)")
-            print("  3. read the flow back, and write the tool's answer, unchanged, to a file readback.json")
-            print("  4. bundle_flow.py %s --check readback.json" % flow_dir)
-            print("  5. for every item under Setup in the notes: does it exist in the workspace (by name only)")
-            print("  Say MATCH or \"identical\" to the user only when step 4 printed `WINDMILL: MATCH`.")
+            print(first)
+            print("  2. save the draft: pass summary, description, schema and value of the bundle file, unchanged. "
+                  "If the tool rejects it (\"invalid JSON\"), do not retype it a third time: use the way "
+                  "IN PARTS below")
+            for n, line in enumerate(last, 3):
+                print(line % n)
+        elif skel_size <= CHAT_LIMIT and files:
+            print("DRAFT: SAVE IN PARTS - the bundle is %d bytes, too large for one tool call (limit %d). This "
+                  "works only when your Windmill tools can set the code of ONE step of a saved flow (a tool "
+                  "named like `set_flow_module_code`). If you have no such tool: do not save; tell the user to "
+                  "push the folder with `wmill sync push`. Otherwise, in order:" % (size, CHAT_LIMIT))
+            print(first)
+            print("  2. save the draft from %s (%d bytes: the same flow with empty code), unchanged"
+                  % (os.path.basename(skel_path), skel_size))
+            print("  3. one call per step: set the code of the step to the content of its file, unchanged:")
+            for mid, rel in files:
+                print("       step `%s`  <-  %s" % (mid, rel))
+            for n, line in enumerate(last, 4):
+                print(line % n)
+        else:
+            print("DRAFT: TOO LARGE FOR A CHAT TOOL - %d bytes, and %d bytes even without the code (limit %d). Do NOT "
+                  "save this flow through a Windmill tool. Tell the user: \"This flow is too large to save and "
+                  "verify from the chat. Push the folder with `wmill sync push`, or import %s in Windmill.\" "
+                  "Then go on with the next workflow." % (size, skel_size, CHAT_LIMIT, os.path.basename(out)))
+        if size <= CHAT_LIMIT and files:
+            print("  IN PARTS (only if step 2 was rejected and you have a tool that sets the code of one step): save "
+                  "%s instead, then set each step's code from its file: %s"
+                  % (os.path.basename(skel_path), ", ".join("`%s` <- %s" % f for f in files)))
+        print("  Say MATCH or \"identical\" to the user only when the check printed `WINDMILL: MATCH`.")
         return 0
     try:
         with open(argv[3], encoding="utf-8-sig") as fh:

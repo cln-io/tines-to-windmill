@@ -1,6 +1,6 @@
 ---
 name: tines-to-windmill
-description: Translate an exported Tines story (JSON) into one or more Windmill flows (flow.yaml plus TypeScript step files). Use when the user gives a Tines story export and wants it ported, migrated or rewritten for Windmill.
+description: Translate a Tines story (an export file, or story JSON or copied actions pasted into the chat) into one or more Windmill flows (flow.yaml plus TypeScript step files). Use it whenever the user wants Tines automation ported, migrated, converted or rewritten for Windmill, also when they only say "translate this to Windmill" above pasted JSON. Load it before calling any Windmill tool.
 allowed-tools: ["execute_code"]
 compatibility: Needs a way to run Python 3 and to write files (a code sandbox or a shell), with this skill's files and the story file present there.
 ---
@@ -480,13 +480,18 @@ Only on a clear yes:
    nothing installed. A draft whose `content` is `!inline <file>` has no code.
    `python3 scripts/bundle_flow.py OUT/f/<folder>/<flow_name>.flow`
    It writes `<flow_name>.bundle.json` and prints one line per step, then
-   one of two lines:
-   - `DRAFT: OK TO SAVE`: go on with point 2.
-   - `DRAFT: TOO LARGE FOR A CHAT TOOL`: stop step 9 for this flow. Do not
-     save it through a Windmill tool, not in parts and not retyped: a flow of
-     that size loses steps and branches on the way, and the read-back is cut
-     off, so nobody can check it. Tell the user what the line says (push the
-     folder with `wmill sync push`), and go on with the next workflow.
+   one `DRAFT:` line and the steps to follow. Follow what it prints:
+   - `DRAFT: OK TO SAVE`: the flow fits in one tool call. Go on with point 2.
+   - `DRAFT: SAVE IN PARTS`: the flow is too large for one call. If your
+     Windmill tools can set the code of one step of a saved flow (a tool
+     named like `set_flow_module_code`), save `<flow_name>.skeleton.json`
+     (the same flow with empty code), then set each step's code from its
+     file, one call per step. Never retype the whole flow into one call: a
+     flow of that size loses steps and branches on the way. With no such
+     tool: do not save; tell the user to push the folder with
+     `wmill sync push`.
+   - `DRAFT: TOO LARGE FOR A CHAT TOOL`: stop step 9 for this flow, tell the
+     user what the line says, and go on with the next workflow.
 2. Read what is already at that path. If a flow or draft exists there, stop
    and ask the user whether to replace it. Never overwrite without that answer.
 3. Create the flow as a **draft** with the content of the bundle file
@@ -570,8 +575,9 @@ status alone:
 3. Compare with what the story does: the same number of pages or items you
    would expect, the same targets. Say what you could not compare.
 4. If a step failed, read its error and name the kind:
-   - **Setup**: a variable, resource or permission is missing or wrong. Tell
-     the user what to set. Do not change code.
+   - **Setup**: a variable, resource or permission is missing or wrong, or
+     the job never gets past installing packages (the worker cannot reach
+     the package registry). Tell the user what to set. Do not change code.
    - **The other system**: it answered with an error (4xx, 5xx, timeout).
      Show the status and the short message. Do not retry in a loop.
    - **The code**: fix the step file, run steps 7 and 9 again (validator,
@@ -639,6 +645,30 @@ Then continue with the next workflow in `PLAN.md`.
   defaults to "delete all", a `confirm` that defaults to true). An input that
   deletes, sends or blocks has no default and is required, or the harmless
   choice is the default.
+- Going straight to the Windmill tools: looking around the workspace,
+  writing scripts and flows there while you port. Windmill is touched in
+  step 9, after the files passed the checks and the user said yes.
+- Loading a connection's long instruction text (a tool named like
+  `get_instructions`) "to be sure". It can be 20,000 tokens. The flow format
+  is in this skill's references. Load it only when a Windmill call fails and
+  the error tells you to.
+- Creating a helper script in the workspace to look inside variables, or
+  changing a script, flow or variable that was already there. Read by name
+  only; never read values; change an existing item only when the user said
+  so for that item.
+- Copying a bad habit from scripts that are already in the workspace
+  (certificate checks switched off, secrets in code). The rules here win.
+- Polling a job that does not finish. Look at a running job at most three
+  times. If its log stops at installing packages (`bun install`,
+  `Resolving dependencies`, `pip install`), the worker cannot reach the
+  package registry: that is a **Setup** problem. Cancel the job, tell the
+  user, and do not start it again.
+- Saying "verified", "tested" or "complete" for a flow that was not run. A
+  run of one helper script is not a test of the flow. Say what was run and
+  what was not.
+- Spending the whole tool budget of one message without a result. When a
+  call fails twice in the same way, stop repeating it: say what is done,
+  what is not, and what the next step is.
 - Reading a script's source (`cat`, `sed`, `grep` on `scripts/*.py`) to see
   what the validator checks. Run it; its findings say what to fix.
 - Dropping an outside effect as "not portable" because its input arrives
